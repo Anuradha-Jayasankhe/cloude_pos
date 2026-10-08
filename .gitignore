@@ -1,0 +1,17 @@
+/server/realtime_sync_backend_ts/node_modules
+/server/realtime_sync_backend_ts/dist
+/server/node_modules
+/server/dist
+
+# Environment variables & secrets
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+
+# OS & Editor files
+.DS_Store
+Thumbs.db
+*.log

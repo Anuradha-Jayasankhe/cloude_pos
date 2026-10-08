@@ -1,0 +1,75 @@
+name: store_buddy_pos
+description: "A new Flutter project."
+
+publish_to: 'none' 
+
+
+version: 1.0.4
+
+environment:
+  sdk: ^3.10.7
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # State Management
+  bloc: ^8.1.2
+  flutter_bloc: ^8.1.3
+  equatable: ^2.0.5
+  provider: ^6.1.1
+
+  # Networking
+  dio: ^5.3.2
+
+  # Database
+  drift: ^2.14.1
+  sqlite3_flutter_libs: ^0.5.18
+  path: ^1.9.0
+  path_provider: ^2.1.2
+  file_picker: ^8.0.0
+
+  # Connectivity & Utils
+  connectivity_plus: ^5.0.2
+  shared_preferences: ^2.2.2
+  jwt_decoder: ^2.0.1
+
+  # QR & Scanning
+  qr_flutter: ^4.1.0
+
+  # Printing
+  printing: ^5.12.0
+  pdf: ^3.11.1
+
+  # WebSocket
+  web_socket_channel: ^2.4.0
+
+  # UI Icons
+  cupertino_icons: ^1.0.8
+  intl: ^0.20.2
+  crypto: ^3.0.7
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  # Database code generation
+  drift_dev: ^2.14.0
+  build_runner: ^2.4.6
+
+  flutter_lints: ^6.0.0
+
+
+flutter:
+
+  uses-material-design: true
+
+  assets:
+    - assets/fonts/geist-latin.woff2
+
+  fonts:
+    - family: Geist
+      fonts:
+        - asset: assets/fonts/geist-latin.woff2
+    # To enable embedded Unicode PDF fonts, add your TTF at assets/fonts/NotoSans-Regular.ttf
+    # and uncomment the font registration above.

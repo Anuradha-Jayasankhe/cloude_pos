@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="StoreBuddy Cloud - Next-Generation Point of Sale (POS) and Retail Management System for Windows Desktop and Android Mobile. High-speed offline SQLite, driverless ESC/POS thermal printing, IMEI serialization, and cloud sync.">
+  <meta name="keywords" content="POS, Point of Sale, Retail POS, Offline POS, ESC/POS, Thermal Receipt Printer, Barcode Scanner, StoreBuddy Cloud, Windows POS, Android POS, Mobile Shop POS">
+  <meta name="author" content="StoreBuddy Cloud Team">
+  <title>StoreBuddy Cloud | Next-Gen Retail & Mobile POS Software</title>
+  
+  <!-- Modern Google Typography -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700;800;900&display=swap" rel="stylesheet">
+  
+  <!-- Main Stylesheet -->
+  <link rel="stylesheet" href="/css/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🏪</text></svg>">
+</head>
+<body>
+
+  <!-- Site Navigation Header -->
+  <header class="site-header">
+    <div class="container nav-container">
+      <a href="/" class="brand-logo" id="navBrandLogo">
+        <div class="brand-icon-box">SB</div>
+        <span>StoreBuddy <span class="gradient-text">Cloud</span></span>
+      </a>
+
+      <nav class="nav-links">
+        <a href="#downloads" class="nav-link" id="navDownloads">Downloads</a>
+        <a href="#features" class="nav-link" id="navFeatures">Features</a>
+        <a href="#guide" class="nav-link" id="navGuide">User Guide</a>
+        <a href="#architecture" class="nav-link" id="navArchitecture">Architecture</a>
+        <a href="#faq" class="nav-link" id="navFaq">FAQ</a>
+      </nav>
+
+      <div class="nav-actions">
+        <button id="themeToggleBtn" class="theme-toggle-btn" title="Toggle Dark/Light Mode" aria-label="Toggle theme">
+          <span id="themeToggleIcon">☀️</span>
+        </button>
+        <a href="#downloads" class="btn btn-primary btn-sm" id="headerDownloadBtn">
+          ⬇️ Download POS
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Showcase Content -->
+  <main>
+    <!-- Hero Section -->
+    <section class="hero-section">
+      <div class="container">
+        <div class="hero-glow-badge">
+          <span>⚡</span>
+          <span>Official Release v2.4.0 • Now Live for Windows Desktop & Android</span>
+        </div>
+
+        <h1 class="hero-title">
+          The Complete Retail, Wholesale & <br>
+          <span class="gradient-text">Point of Sale Operating System</span>
+        </h1>
+
+        <p class="hero-subtitle">
+          Designed for maximum speed, zero downtime, and instant thermal receipt printing. 
+          Seamlessly runs offline on local SQLite and auto-syncs with StoreBuddy Cloud.
+        </p>
+
+        <div class="hero-cta-group">
+          <a href="#downloads" class="btn btn-primary btn-lg" id="heroDownloadPrimary">
+            ⬇️ Download Latest POS (v2.4.0)
+          </a>
+          <a href="#guide" class="btn btn-ghost btn-lg" id="heroGuideLink">
+            📖 4-Step Quick Start Guide →
+          </a>
+        </div>
+
+        <div class="hero-badges-row">
+          <div class="hero-badge-item">
+            <span class="badge-check">✓</span> 100% Offline SQLite Engine
+          </div>
+          <div class="hero-badge-item">
+            <span class="badge-check">✓</span> Direct ESC/POS Driverless Thermal Printing
+          </div>
+          <div class="hero-badge-item">
+            <span class="badge-check">✓</span> Barcode Label & IMEI Serial Generation
+          </div>
+          <div class="hero-badge-item">
+            <span class="badge-check">✓</span> Multi-Branch Real-Time Synchronization
+          </div>
+        </div>
+
+        <!-- POS Interactive Terminal Screen Mockup -->
+        <div class="terminal-mockup-wrapper">
+          <div class="terminal-frame">
+            <div class="terminal-titlebar">
+              <div class="window-dots">
+                <span class="dot-red"></span>
+                <span class="dot-yellow"></span>
+                <span class="dot-green"></span>
+              </div>
+              <span class="terminal-brand-title">StoreBuddy POS v2.4.0 — Main Register (Offline Resilient)</span>
+              <div class="terminal-status-chips">
+                <span class="chip-status">🟢 ONLINE / SYNC ACTIVE</span>
+              </div>
+            </div>
+
+            <div class="terminal-body">
+              <div class="terminal-cart-box">
+                <div class="cart-header">
+                  <span>ACTIVE CHECKOUT CART (3 ITEMS)</span>
+                  <span>INVOICE #INV-2026-8941</span>
+                </div>
+
+                <div class="cart-item-row">
+                  <div>
+                    <strong>Samsung Galaxy A15 (128GB)</strong>
+                    <div class="text-muted" style="font-size: 11px;">IMEI: 354891092837192 • 1 Year Warranty</div>
+                  </div>
+                  <span>Rs. 48,500.00</span>
+                </div>
+
+                <div class="cart-item-row">
+                  <div>
+                    <strong>80mm Thermal Receipt Paper Rolls</strong>
+                    <div class="text-muted" style="font-size: 11px;">Pack of 5 • SKU: SB-ROLL-80</div>
+                  </div>
+                  <span>Rs. 1,250.00</span>
+                </div>
+
+                <div class="cart-item-row">
+                  <div>
+                    <strong>Dialog Mobile Reload (Prepaid)</strong>
+                    <div class="text-muted" style="font-size: 11px;">077-1234567 • Commission Tier 2.5%</div>
+                  </div>
+                  <span>Rs. 500.00</span>
+                </div>
+
+                <div class="cart-total-row">
+                  <div>
+                    <span class="text-muted" style="font-size: 12px; display: block;">GRAND TOTAL (CASH / CARD / COD):</span>
+                    <strong>NET AMOUNT DUE</strong>
+                  </div>
+                  <span class="cart-total-value" id="demoTotalAmount">Rs. 50,250.00</span>
+                </div>
+              </div>
+
+              <div class="terminal-controls-box">
+                <div class="control-stat-card">
+                  <span class="stat-icon">🖨️</span>
+                  <div>
+                    <div class="stat-title">ESC/POS Thermal Engine</div>
+                    <div class="stat-value">USB 80mm • Auto-Cut Ready</div>
+                  </div>
+                </div>
+
+                <div class="control-stat-card">
+                  <span class="stat-icon">💵</span>
+                  <div>
+                    <div class="stat-title">Hardware Cash Drawer</div>
+                    <div class="stat-value">Pin 2 (RJ11) Kick Armed</div>
+                  </div>
+                </div>
+
+                <div class="control-stat-card">
+                  <span class="stat-icon">📶</span>
+                  <div>
+                    <div class="stat-title">Local SQLite Storage</div>
+                    <div class="stat-value">0ms Latency • Auto Cloud Sync</div>
+                  </div>
+                </div>
+
+                <div class="control-stat-card">
+                  <span class="stat-icon">🚚</span>
+                  <div>
+                    <div class="stat-title">Delivery & Courier Mode</div>
+                    <div class="stat-value">COD Zero-Cash Guarantee</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- Downloads Hub Section (Spotlight Newest on Top, Archive Below) -->
+    <section id="downloads" class="downloads-section">
+      <div class="container">
+        <div class="section-header">
+          <div class="section-tag">Software Downloads Hub</div>
+          <h2 class="section-title">Download StoreBuddy POS</h2>
+          <p class="section-subtitle">
+            Choose your platform below. The latest release is spotlighted at the top, with chronological release history and changelogs below. 
+            Updated directly from the System Admin Portal.
+          </p>
+        </div>
+
+        <!-- Platform Tabs -->
+        <div class="platform-tabs-nav" role="tablist">
+          <button id="tabWin" class="platform-tab-btn active" role="tab" aria-selected="true">
+            <span>🪟</span>
+            <span>Windows Desktop (x64)</span>
+          </button>
+          <button id="tabAndroid" class="platform-tab-btn" role="tab" aria-selected="false">
+            <span>🤖</span>
+            <span>Android Mobile (APK)</span>
+          </button>
+        </div>
+
+        <!-- Dynamic Content Container (Rendered by TypeScript) -->
+        <div id="downloadsContainer">
+          <!-- Populated by main.ts -->
+        </div>
+      </div>
+    </section>
+
+    <!-- Core Features Section -->
+    <section id="features" class="features-section">
+      <div class="container">
+        <div class="section-header">
+          <div class="section-tag">Enterprise Retail Capabilities</div>
+          <h2 class="section-title">Built for Real Retail Operations</h2>
+          <p class="section-subtitle">
+            Every feature was engineered to eliminate cashier friction, safeguard inventory, and streamline sales.
+          </p>
+        </div>
+
+        <!-- Features Grid (Rendered by TypeScript) -->
+        <div id="featuresGrid" class="features-grid">
+          <!-- Populated by main.ts -->
+        </div>
+      </div>
+    </section>
+
+    <!-- Interactive User Guide Section -->
+    <section id="guide" class="guide-section">
+      <div class="container">
+        <div class="section-header">
+          <div class="section-tag">Quick Start Documentation</div>
+          <h2 class="section-title">4-Step Onboarding Guide</h2>
+          <p class="section-subtitle">
+            Go from downloading the installer to ringing up your first sale in under 5 minutes.
+          </p>
+        </div>
+
+        <!-- Guide Steps Navigation Tabs -->
+        <div id="guideStepTabs" class="guide-step-tabs">
+          <!-- Populated by main.ts -->
+        </div>
+
+        <!-- Guide Step Content Display -->
+        <div id="guideStepDisplay">
+          <!-- Populated by main.ts -->
+        </div>
+      </div>
+    </section>
+
+    <!-- System Architecture & Admin Sync Section -->
+    <section id="architecture" style="padding: 90px 0;">
+      <div class="container">
+        <div class="section-header">
+          <div class="section-tag">System Architecture</div>
+          <h2 class="section-title">How StoreBuddy Cloud Works</h2>
+          <p class="section-subtitle">
+            Seamless synchronization between Central Cloud Server, System Admin Portal, and Local Offline POS Terminals.
+          </p>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-bottom: 36px;">
+          <div class="feature-card" style="text-align: center;">
+            <div style="font-size: 38px; margin-bottom: 12px;">🖥️</div>
+            <h3 style="font-size: 18px; margin-bottom: 8px;">1. POS Terminals</h3>
+            <p class="text-muted" style="font-size: 13.5px;">
+              Windows and Android terminals run locally with SQLite. Transactions are recorded instantaneously with zero lag.
+            </p>
+          </div>
+
+          <div class="feature-card" style="text-align: center;">
+            <div style="font-size: 38px; margin-bottom: 12px;">☁️</div>
+            <h3 style="font-size: 18px; margin-bottom: 8px;">2. Cloud Backend API</h3>
+            <p class="text-muted" style="font-size: 13.5px;">
+              Express & SQLite/Postgres cloud engine synchronizes stock, releases, multi-branch invoices, and cashier shifts.
+            </p>
+          </div>
+
+          <div class="feature-card" style="text-align: center;">
+            <div style="font-size: 38px; margin-bottom: 12px;">🛡️</div>
+            <h3 style="font-size: 18px; margin-bottom: 8px;">3. Cloud Control Center</h3>
+            <p class="text-muted" style="font-size: 13.5px;">
+              Manage software release download links, system configurations, store branches, and global settings with multi-tenant isolation.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- FAQ Section -->
+    <section id="faq" class="faq-section">
+      <div class="container">
+        <div class="section-header">
+          <div class="section-tag">Support & Answers</div>
+          <h2 class="section-title">Frequently Asked Questions</h2>
+          <p class="section-subtitle">
+            Find answers to common questions about setup, hardware, offline mode, and releases.
+          </p>
+        </div>
+
+        <!-- FAQ Container (Rendered by TypeScript) -->
+        <div id="faqContainer" class="faq-list">
+          <!-- Populated by main.ts -->
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Site Footer -->
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div>
+          <div class="brand-logo" style="margin-bottom: 12px;">
+            <div class="brand-icon-box">SB</div>
+            <span>StoreBuddy <span class="gradient-text">Cloud</span></span>
+          </div>
+          <p class="footer-brand-desc">
+            Next-generation Point of Sale & Inventory Platform engineered for retail stores, supermarkets, mobile phone retailers, and wholesale distributors.
+          </p>
+          <div style="margin-top: 18px;">
+            <span class="chip-status" style="display: inline-block;">🟢 System Online: Port 8080</span>
+          </div>
+        </div>
+
+        <div class="footer-col">
+          <h5>Downloads</h5>
+          <ul>
+            <li><a href="#downloads">Windows Desktop (.exe)</a></li>
+            <li><a href="#downloads">Android Mobile (.apk)</a></li>
+            <li><a href="#downloads">Release Changelogs</a></li>
+            <li><a href="#guide">Installation Guide</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-col">
+          <h5>Core Modules</h5>
+          <ul>
+            <li><a href="#features">ESC/POS Thermal Engine</a></li>
+            <li><a href="#features">Offline SQLite Sync</a></li>
+            <li><a href="#features">Cash on Delivery (COD)</a></li>
+            <li><a href="#features">IMEI Serialization</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-col">
+          <h5>Resources</h5>
+          <ul>
+            <li><a href="#guide">Quick Start Steps</a></li>
+            <li><a href="#faq">Hardware Setup FAQ</a></li>
+            <li><a href="/api/v1/releases" target="_blank">Releases REST API</a></li>
+            <li><a href="/admin" target="_blank">Portal</a></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="footer-bottom">
+        <div>
+          © 2026 StoreBuddy Cloud. All rights reserved. Built with TypeScript.
+        </div>
+        <div style="display: flex; gap: 16px;">
+          <a href="/admin" target="_blank">Portal</a>
+          <span>•</span>
+          <a href="#downloads">Releases</a>
+          <span>•</span>
+          <a href="#guide">User Guide</a>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Main Application Script (ES Module compiled from TypeScript) -->
+  <script type="module" src="/js/main.js"></script>
+</body>
+</html>
