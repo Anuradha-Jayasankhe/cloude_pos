@@ -1,12 +1,16 @@
-﻿import '../database/database.dart' as db;
+import '../database/database.dart' as db;
 import '../models/models.dart' as models;
 import '../services/sync_service.dart';
 
 class ProductRepository {
   final db.AppDatabase _database;
-  final SyncService? _syncService;
+  SyncService? _syncService;
 
   ProductRepository(this._database, [this._syncService]);
+
+  void updateSyncService(SyncService? syncService) {
+    _syncService = syncService;
+  }
 
   Future<List<models.Product>> getAllProducts() async {
     final products = await _database.getAllProducts();
@@ -99,9 +103,10 @@ class ProductRepository {
       updatedAt: now,
     );
     await _database.insertProduct(stamped.toCompanion());
-    if (_syncService != null) {
+    final sync = _syncService;
+    if (sync != null) {
       try {
-        await _syncService.queueOperation(
+        await sync.queueOperation(
           'INSERT',
           'products',
           stamped.id,
@@ -141,9 +146,10 @@ class ProductRepository {
       updatedAt: now,
     );
     await _database.updateProduct(stamped.toCompanion());
-    if (_syncService != null) {
+    final syncUpdate = _syncService;
+    if (syncUpdate != null) {
       try {
-        await _syncService.queueOperation(
+        await syncUpdate.queueOperation(
           'UPDATE',
           'products',
           stamped.id,
@@ -158,8 +164,9 @@ class ProductRepository {
 
   Future<void> deleteProduct(String id) async {
     await _database.deleteProduct(id);
-    if (_syncService != null) {
-      await _syncService.queueOperation('DELETE', 'products', id, {'id': id});
+    final sync = _syncService;
+    if (sync != null) {
+      await sync.queueOperation('DELETE', 'products', id, {'id': id});
     }
   }
 }

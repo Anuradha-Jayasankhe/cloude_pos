@@ -1049,6 +1049,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (_syncService != null) return;
     final apiClient = context.read<ApiClient>();
     _syncService = SyncService(apiClient, tenantId);
+    _productRepository?.updateSyncService(_syncService);
+    _customerRepository?.updateSyncService(_syncService);
+    _saleRepository?.updateSyncService(_syncService);
 
     // Called after the HTTP sync loop applies remote events to prefs.
     // We reload prefs into memory so the UI reflects the latest data
@@ -1574,9 +1577,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void _ensureRepositories(String tenantId) {
     _appDatabase ??= db.AppDatabase(tenantId);
     _activeTenantId = tenantId;
-    _productRepository ??= ProductRepository(_appDatabase!, _syncService);
-    _customerRepository ??= CustomerRepository(_appDatabase!, _syncService);
-    _saleRepository ??= SaleRepository(_appDatabase!, _syncService);
+    if (_productRepository == null) {
+      _productRepository = ProductRepository(_appDatabase!, _syncService);
+    } else {
+      _productRepository!.updateSyncService(_syncService);
+    }
+    if (_customerRepository == null) {
+      _customerRepository = CustomerRepository(_appDatabase!, _syncService);
+    } else {
+      _customerRepository!.updateSyncService(_syncService);
+    }
+    if (_saleRepository == null) {
+      _saleRepository = SaleRepository(_appDatabase!, _syncService);
+    } else {
+      _saleRepository!.updateSyncService(_syncService);
+    }
 
     if (!_coreDataLoaded) {
       _coreDataLoaded = true;
@@ -1613,13 +1628,30 @@ class _DashboardScreenState extends State<DashboardScreen> {
         return mapped;
       }).toList();
 
+      final hydratedMap = {for (final p in hydratedProducts) p.id: p};
+      final mergedProducts = <_ProductItem>[...hydratedProducts];
+      for (final p in _products) {
+        if (!hydratedMap.containsKey(p.id) && p.id.isNotEmpty) {
+          mergedProducts.add(p);
+        }
+      }
+
       _products
         ..clear()
-        ..addAll(hydratedProducts);
+        ..addAll(mergedProducts);
+
+      final hydratedCustomers = repoCustomers.map(_fromDomainCustomer).toList();
+      final custMap = {for (final c in hydratedCustomers) c.id: c};
+      final mergedCustomers = <_CustomerItem>[...hydratedCustomers];
+      for (final c in _customers) {
+        if (!custMap.containsKey(c.id) && c.id.isNotEmpty) {
+          mergedCustomers.add(c);
+        }
+      }
 
       _customers
         ..clear()
-        ..addAll(repoCustomers.map(_fromDomainCustomer));
+        ..addAll(mergedCustomers);
       _selectedCustomerId = null;
 
       _sales
@@ -1707,6 +1739,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       }
 
       if (_productRepository != null) {
+        _productRepository!.updateSyncService(_syncService);
         await _productRepository!.insertProduct(_toDomainProduct(targetItem));
         await _refreshPendingSyncQueue();
         await _triggerImmediateSync(
@@ -15511,12 +15544,15 @@ class _ProductItem {
   Map<String, dynamic> toJson() {
     return {
       'id': id,
+      '_id': id,
       'name': name,
       'locationId': locationId,
       'category': category,
       'barcode': barcode,
       'measureUnit': measureUnit,
+      'unitOfMeasure': measureUnit,
       'productType': productType,
+      'type': productType,
       'description': description,
       'costPrice': costPrice,
       'warrantyMonths': warrantyMonths,
@@ -15556,14 +15592,15 @@ class _ProductItem {
       attrs['secondaryPrice'] = (json['secondaryPrice'] as num?)?.toDouble();
     }
 
+    final id = (json['id'] ?? json['_id'] ?? '').toString();
     return _ProductItem(
-      id: (json['id'] ?? '').toString(),
+      id: id,
       name: (json['name'] ?? '').toString(),
       locationId: (json['locationId'] ?? '').toString(),
       category: (json['category'] ?? '').toString(),
-      barcode: (json['barcode'] ?? json['id'] ?? '').toString(),
-      measureUnit: (json['measureUnit'] ?? 'PIECE').toString().toUpperCase(),
-      productType: (json['productType'] ?? 'PRODUCT').toString().toUpperCase(),
+      barcode: (json['barcode'] ?? id).toString(),
+      measureUnit: (json['measureUnit'] ?? json['unitOfMeasure'] ?? 'PIECE').toString().toUpperCase(),
+      productType: (json['productType'] ?? json['type'] ?? 'PRODUCT').toString().toUpperCase(),
       description: (json['description'] ?? '').toString(),
       costPrice: (json['costPrice'] as num?)?.toDouble(),
       warrantyMonths: (json['warrantyMonths'] as num?)?.toInt() ?? 0,

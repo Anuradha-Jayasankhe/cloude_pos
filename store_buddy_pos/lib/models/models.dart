@@ -3,6 +3,12 @@ import 'package:drift/drift.dart';
 
 import '../database/database.dart';
 
+DateTime? _parseDateTime(dynamic val) {
+  if (val == null) return null;
+  if (val is DateTime) return val;
+  return DateTime.tryParse(val.toString());
+}
+
 class Product {
   final String id;
   final String tenantId;
@@ -84,20 +90,14 @@ class Product {
       stock: (json['stock'] as num).toDouble(),
       minStock: (json['minStock'] as num).toDouble(),
       warrantyMonths: (json['warrantyMonths'] as num?)?.toInt() ?? 0,
-      expiryDate: json['expiryDate'] != null
-          ? DateTime.tryParse(json['expiryDate'].toString())
-          : null,
+      expiryDate: _parseDateTime(json['expiryDate']),
       locationId: json['locationId'],
       supplierId: (json['supplierId'] ?? '').toString(),
       imeis: json['imeis']?.toString(),
       imageUrl: json['imageUrl']?.toString(),
       synced: json['synced'] ?? true,
-      createdAt: json['createdAt'] != null
-          ? DateTime.parse(json['createdAt'])
-          : null,
-      updatedAt: json['updatedAt'] != null
-          ? DateTime.parse(json['updatedAt'])
-          : null,
+      createdAt: _parseDateTime(json['createdAt']),
+      updatedAt: _parseDateTime(json['updatedAt']),
     );
   }
 
@@ -131,6 +131,7 @@ class Product {
 
   Map<String, dynamic> toJson() {
     return {
+      'id': id,
       '_id': id,
       'tenantId': tenantId,
       'name': name,
@@ -549,12 +550,8 @@ class Customer {
       customerType: json['customerType'] as String? ?? 'RETAIL',
       discountPercent: (json['discountPercent'] as num? ?? 0).toDouble(),
       synced: json['synced'] ?? true,
-      createdAt: json['createdAt'] != null
-          ? DateTime.parse(json['createdAt'])
-          : null,
-      updatedAt: json['updatedAt'] != null
-          ? DateTime.parse(json['updatedAt'])
-          : null,
+      createdAt: _parseDateTime(json['createdAt']),
+      updatedAt: _parseDateTime(json['updatedAt']),
       shippingAddress: json['shippingAddress']?.toString(),
     );
   }
@@ -577,6 +574,27 @@ class Customer {
       updatedAt: Value(updatedAt),
       shippingAddress: Value(shippingAddress),
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      '_id': id,
+      'tenantId': tenantId,
+      'name': name,
+      'phone': phone,
+      'email': email,
+      'address': address,
+      'vehicleNumber': vehicleNumber,
+      'creditLimit': creditLimit,
+      'currentBalance': currentBalance,
+      'customerType': customerType,
+      'discountPercent': discountPercent,
+      'synced': synced,
+      'createdAt': createdAt?.toIso8601String(),
+      'updatedAt': updatedAt?.toIso8601String(),
+      'shippingAddress': shippingAddress,
+    };
   }
 }
 
@@ -629,16 +647,10 @@ class Employee {
       commissionValue: (json['commissionValue'] as num? ?? 0).toDouble(),
       minSalesTarget: (json['minSalesTarget'] as num? ?? 0).toDouble(),
       isAgent: json['isAgent'] ?? false,
-      joiningDate: json['joiningDate'] != null
-          ? DateTime.tryParse(json['joiningDate'])
-          : null,
+      joiningDate: _parseDateTime(json['joiningDate']),
       synced: json['synced'] ?? true,
-      createdAt: json['createdAt'] != null
-          ? DateTime.parse(json['createdAt'])
-          : null,
-      updatedAt: json['updatedAt'] != null
-          ? DateTime.parse(json['updatedAt'])
-          : null,
+      createdAt: _parseDateTime(json['createdAt']),
+      updatedAt: _parseDateTime(json['updatedAt']),
     );
   }
 
@@ -768,13 +780,9 @@ class ExpenseModel {
       employeeId: json['employeeId'],
       locationId: json['locationId'],
       notes: json['notes'],
-      expenseDate: json['expenseDate'] != null
-          ? DateTime.parse(json['expenseDate'])
-          : DateTime.now(),
+      expenseDate: _parseDateTime(json['expenseDate']) ?? DateTime.now(),
       synced: json['synced'] ?? false,
-      createdAt: json['createdAt'] != null
-          ? DateTime.tryParse(json['createdAt'])
-          : null,
+      createdAt: _parseDateTime(json['createdAt']),
     );
   }
 
@@ -795,6 +803,7 @@ class ExpenseModel {
   }
 
   Map<String, dynamic> toJson() => {
+    'id': id,
     '_id': id,
     'tenantId': tenantId,
     'category': category,

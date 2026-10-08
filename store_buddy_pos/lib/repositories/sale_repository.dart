@@ -7,11 +7,15 @@ import '../services/sync_service.dart';
 
 class SaleRepository {
   final db.AppDatabase _database;
-  final SyncService? _syncService;
+  SyncService? _syncService;
   final CommissionService _commissionService;
 
   SaleRepository(this._database, [this._syncService])
     : _commissionService = CommissionService(_database);
+
+  void updateSyncService(SyncService? syncService) {
+    _syncService = syncService;
+  }
 
   Future<List<models.Sale>> getAllSales() async {
     final sales = await _database.getAllSales();
@@ -99,7 +103,8 @@ class SaleRepository {
     }
     await _commissionService.recordCommissionsForSale(stamped);
 
-    if (_syncService != null) {
+    final sync = _syncService;
+    if (sync != null) {
       final syncedItems = <Map<String, dynamic>>[];
       for (final i in stamped.items) {
         syncedItems.add({
@@ -115,7 +120,7 @@ class SaleRepository {
         });
       }
       try {
-        await _syncService.queueOperation('INSERT', 'sales', stamped.id, {
+        await sync.queueOperation('INSERT', 'sales', stamped.id, {
           'id': stamped.id,
           'tenantId': stamped.tenantId,
           'customerId': stamped.customerId,
@@ -184,7 +189,8 @@ class SaleRepository {
     }
     await _commissionService.recordCommissionsForSale(stamped);
 
-    if (_syncService != null) {
+    final syncUpdate = _syncService;
+    if (syncUpdate != null) {
       final syncedItems = <Map<String, dynamic>>[];
       for (final i in stamped.items) {
         syncedItems.add({
@@ -200,7 +206,7 @@ class SaleRepository {
         });
       }
       try {
-        await _syncService.queueOperation('UPDATE', 'sales', stamped.id, {
+        await syncUpdate.queueOperation('UPDATE', 'sales', stamped.id, {
           'id': stamped.id,
           'tenantId': stamped.tenantId,
           'customerId': stamped.customerId,
@@ -257,7 +263,8 @@ class SaleRepository {
       ),
     );
 
-    if (_syncService != null) {
+    final syncStatus = _syncService;
+    if (syncStatus != null) {
       final saleItems = await _database.getSaleItems(saleId);
       final syncedItems = <Map<String, dynamic>>[];
       for (final i in saleItems) {
@@ -274,7 +281,7 @@ class SaleRepository {
         });
       }
       try {
-        await _syncService.queueOperation('UPDATE', 'sales', saleId, {
+        await syncStatus.queueOperation('UPDATE', 'sales', saleId, {
           'id': sale.id,
           'tenantId': sale.tenantId,
           'customerId': sale.customerId,
@@ -328,7 +335,8 @@ class SaleRepository {
       ),
     );
 
-    if (_syncService != null) {
+    final syncCod = _syncService;
+    if (syncCod != null) {
       final saleItems = await _database.getSaleItems(saleId);
       final syncedItems = <Map<String, dynamic>>[];
       for (final i in saleItems) {
@@ -345,7 +353,7 @@ class SaleRepository {
         });
       }
       try {
-        await _syncService.queueOperation('UPDATE', 'sales', saleId, {
+        await syncCod.queueOperation('UPDATE', 'sales', saleId, {
           'id': sale.id,
           'tenantId': sale.tenantId,
           'customerId': sale.customerId,
@@ -384,8 +392,9 @@ class SaleRepository {
   Future<void> deleteSaleById(String saleId) async {
     await _database.deleteSaleItemsBySaleId(saleId);
     await _database.deleteSale(saleId);
-    if (_syncService != null) {
-      await _syncService.queueOperation('DELETE', 'sales', saleId, {
+    final sync = _syncService;
+    if (sync != null) {
+      await sync.queueOperation('DELETE', 'sales', saleId, {
         'id': saleId,
       });
     }

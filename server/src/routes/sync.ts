@@ -126,7 +126,12 @@ syncRouter.post('/push', requireAuth, async (req, res) => {
         payload['updatedAt'] = createdAt || eventTsIso;
       }
 
-      if (!entity || !entityId || (action !== 'UPSERT' && action !== 'DELETE')) {
+      let normAction = String(action ?? '').trim().toUpperCase();
+      if (normAction === 'INSERT' || normAction === 'UPDATE') {
+        normAction = 'UPSERT';
+      }
+
+      if (!entity || !entityId || (normAction !== 'UPSERT' && normAction !== 'DELETE')) {
         ack.push({
           client_op_id: clientOpId,
           entity,
@@ -154,7 +159,7 @@ syncRouter.post('/push', requireAuth, async (req, res) => {
           client_op_id: clientOpId,
           entity,
           entity_id: entityId,
-          action,
+          action: normAction,
           accepted: false,
           reason: 'conflict',
         });
@@ -172,7 +177,7 @@ syncRouter.post('/push', requireAuth, async (req, res) => {
           entity,
           entityId,
           payload,
-          deleted: action === 'DELETE',
+          deleted: normAction === 'DELETE',
           updatedAt: eventTs,
         },
         { upsert: true, new: true, setDefaultsOnInsert: true }
@@ -182,7 +187,7 @@ syncRouter.post('/push', requireAuth, async (req, res) => {
       // tenant (e.g. the client retried after a partial server error), skip
       // creating a duplicate event and return the existing seq to the client.
       let isDuplicate = false;
-      let eventSeq: number;
+      let eventSeq = 0;
       if (clientOpId) {
         const existingEvent = await SyncEventModel.findOne({
           tenantId: auth.tenantId,
@@ -209,7 +214,7 @@ syncRouter.post('/push', requireAuth, async (req, res) => {
           tenantId: auth.tenantId,
           entity,
           entityId,
-          action,
+          action: normAction,
           payload,
           serverTs: new Date(),
           sourceDeviceId: auth.deviceId,
@@ -217,7 +222,7 @@ syncRouter.post('/push', requireAuth, async (req, res) => {
           clientOpId,
         });
 
-        console.log(`Synced ${action} ${entity} ${entityId} for tenant ${auth.tenantId} seq ${seq}`);
+        console.log(`Synced ${normAction} ${entity} ${entityId} for tenant ${auth.tenantId} seq ${seq}`);
       } else {
         console.log(`Duplicate op skipped: clientOpId=${clientOpId} tenant=${auth.tenantId} existing_seq=${eventSeq!}`);
       }
@@ -226,9 +231,9 @@ syncRouter.post('/push', requireAuth, async (req, res) => {
         client_op_id: clientOpId,
         entity,
         entity_id: entityId,
-        action,
+        action: normAction,
         accepted: true,
-        seq: eventSeq!,
+        seq: eventSeq,
       });
     }
 

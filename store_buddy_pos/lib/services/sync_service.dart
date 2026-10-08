@@ -100,8 +100,17 @@ class SyncService {
   }
 
   Future<bool> isOnline() async {
-    final connectivityResult = await Connectivity().checkConnectivity();
-    return connectivityResult != ConnectivityResult.none;
+    try {
+      final connectivityResult = await Connectivity().checkConnectivity();
+      if (connectivityResult != ConnectivityResult.none) {
+        return true;
+      }
+    } catch (_) {}
+    try {
+      return await _apiClient.checkHealth();
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<bool> syncAllData() async {
@@ -260,6 +269,10 @@ class SyncService {
 
     if (token.startsWith('store-session-token-') ||
         token.startsWith('platform-session-token')) {
+      final reloginResult = await _attemptSilentRelogin(prefs);
+      if (reloginResult == null) {
+        return null;
+      }
       return 'This is an offline local session token. Sign in using server credentials to enable sync.';
     }
 
@@ -1257,8 +1270,7 @@ class SyncService {
       payload.putIfAbsent('_id', () => entityId);
     }
 
-    final applied = await _applyWorkspaceEvent(entity, action, payload);
-    if (!applied) return false;
+    await _applyWorkspaceEvent(entity, action, payload);
 
     if (entity == 'products' || entity == 'inventory') {
       await _applyProductEvent(action, payload);
