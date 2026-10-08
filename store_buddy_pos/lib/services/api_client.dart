@@ -6,7 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 class ApiClient {
   static const String localBaseUrl = 'http://localhost:5000/api/v1';
   static const String cloudBaseUrl =
-      'https://storebuddy-cloud-server.vercel.app/api/v1';
+      'https://cloude-pos-theta.vercel.app/api/v1';
 
   static const String _defaultBaseUrl =
       kReleaseMode ? cloudBaseUrl : localBaseUrl;
