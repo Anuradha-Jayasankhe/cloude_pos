@@ -1561,43 +1561,72 @@ extension _point_of_saleExt on _DashboardScreenState {
                       ),
                     ],
                     const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
+                    // ── QUICK ACTIONS TOOLBAR ──
+                    Row(
                       children: [
-                        OutlinedButton.icon(
-                          onPressed: cartItems.isEmpty
-                              ? null
-                              : () async {
-                                  await _showCurrentCartBillPreview();
-                                },
-                          icon: const Icon(Icons.preview_outlined),
-                          label: const Text('View Bill'),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: cartItems.isEmpty
+                                ? null
+                                : () async {
+                                    await _showCurrentCartBillPreview();
+                                  },
+                            style: OutlinedButton.styleFrom(
+                              visualDensity: VisualDensity.compact,
+                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                            icon: const Icon(Icons.receipt_long_outlined, size: 15),
+                            label: const Text('Preview', style: TextStyle(fontSize: 11.5)),
+                          ),
                         ),
-                        OutlinedButton.icon(
-                          onPressed: cartItems.isEmpty
-                              ? null
-                              : () async {
-                                  await _holdCurrentCart();
-                                  if (!mounted) return;
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text('Bill held successfully'),
-                                    ),
-                                  );
-                                },
-                          icon: const Icon(Icons.pause_circle_outline),
-                          label: const Text('Hold Bill'),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: cartItems.isEmpty
+                                ? null
+                                : () async {
+                                    await _holdCurrentCart();
+                                    if (!mounted) return;
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Bill held successfully'),
+                                      ),
+                                    );
+                                  },
+                            style: OutlinedButton.styleFrom(
+                              visualDensity: VisualDensity.compact,
+                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                            icon: const Icon(Icons.pause_circle_outline, size: 15),
+                            label: const Text('Hold', style: TextStyle(fontSize: 11.5)),
+                          ),
                         ),
-                        OutlinedButton.icon(
-                          onPressed: _heldCarts.isEmpty
-                              ? null
-                              : () async {
-                                  await _resumeHeldCart();
-                                },
-                          icon: const Icon(Icons.playlist_add_check),
-                          label: Text('Resume (${_heldCarts.length})'),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _heldCarts.isEmpty
+                                ? null
+                                : () async {
+                                    await _resumeHeldCart();
+                                  },
+                            style: OutlinedButton.styleFrom(
+                              visualDensity: VisualDensity.compact,
+                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                            icon: const Icon(Icons.play_circle_outline, size: 15),
+                            label: Text('Resume (${_heldCarts.length})', style: const TextStyle(fontSize: 11.5)),
+                          ),
                         ),
+                        const SizedBox(width: 6),
                         OutlinedButton.icon(
                           onPressed: cartItems.isEmpty
                               ? null
@@ -1621,103 +1650,238 @@ extension _point_of_saleExt on _DashboardScreenState {
                                     _posCustomerSearchController.clear();
                                   });
                                 },
-                          icon: const Icon(Icons.clear_all),
-                          label: const Text('Clear Cart'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: const Color(0xFFEF4444),
+                            side: BorderSide(
+                              color: cartItems.isEmpty
+                                  ? (isDark ? Colors.white10 : Colors.black12)
+                                  : const Color(0xFFEF4444).withValues(alpha: 0.4),
+                            ),
+                            visualDensity: VisualDensity.compact,
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          icon: const Icon(Icons.delete_sweep_outlined, size: 15),
+                          label: const Text('Clear', style: TextStyle(fontSize: 11.5)),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 12),
+                    // ── CARD 1: ORDER ITEMS CONTAINER ──
                     Container(
-                      constraints: const BoxConstraints(minHeight: 44),
-                      child: cartItems.isEmpty
-                          ? const Text(
-                              'Cart is empty',
-                              style: TextStyle(color: Color(0xFF7E8495)),
-                            )
-                          : Column(
-                              children: cartItems.map((line) {
-                                return Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 5,
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: isDark ? const Color(0xFF1E2433).withValues(alpha: 0.6) : const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(UiRadius.md),
+                        border: Border.all(
+                          color: isDark ? const Color(0xFF2E384D) : const Color(0xFFE2E8F0),
+                          width: 1.2,
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.shopping_bag_outlined,
+                                    size: 15,
+                                    color: AppTheme.brandIndigo,
                                   ),
-                                  child: Row(
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    'ORDER ITEMS',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w800,
+                                      letterSpacing: 0.8,
+                                      color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 1.5),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.brandIndigo.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(UiRadius.pill),
+                                ),
+                                child: Text(
+                                  '${cartItems.length} lines',
+                                  style: TextStyle(
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppTheme.brandIndigo,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          if (cartItems.isEmpty)
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 12),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: isDark ? const Color(0xFF2A344A) : const Color(0xFFEEF2F6),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Icon(
+                                      Icons.remove_shopping_cart_outlined,
+                                      size: 24,
+                                      color: isDark ? Colors.white38 : const Color(0xFF94A3B8),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'Your cart is empty',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 13,
+                                      color: isDark ? Colors.white70 : const Color(0xFF334155),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    'Tap items on the left or scan barcode to add',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: isDark ? Colors.white38 : const Color(0xFF94A3B8),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            )
+                          else
+                            ConstrainedBox(
+                              constraints: const BoxConstraints(maxHeight: 280),
+                              child: ListView.separated(
+                                shrinkWrap: true,
+                                padding: EdgeInsets.zero,
+                                itemCount: cartItems.length,
+                                separatorBuilder: (_, __) => Divider(
+                                  height: 12,
+                                  color: isDark ? const Color(0xFF2E384D) : const Color(0xFFE2E8F0),
+                                ),
+                                itemBuilder: (context, index) {
+                                  final line = cartItems[index];
+                                  return Row(
+                                    crossAxisAlignment: CrossAxisAlignment.center,
                                     children: [
+                                      // Product initial avatar
+                                      Container(
+                                        width: 32,
+                                        height: 32,
+                                        decoration: BoxDecoration(
+                                          color: AppTheme.brandIndigo.withValues(alpha: 0.12),
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        alignment: Alignment.center,
+                                        child: Text(
+                                          line.product.name.isNotEmpty
+                                              ? line.product.name[0].toUpperCase()
+                                              : 'P',
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w800,
+                                            color: AppTheme.brandIndigo,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      // Product details
                                       Expanded(
                                         child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
+                                          crossAxisAlignment: CrossAxisAlignment.start,
                                           children: [
                                             Text(
                                               line.product.name,
                                               style: const TextStyle(
-                                                fontWeight: FontWeight.w600,
+                                                fontWeight: FontWeight.w700,
+                                                fontSize: 12.5,
                                               ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
                                             ),
-                                            Text(
-                                              line.discountValue > 0
-                                                  ? '${_money(line.unitPriceAfterDiscount)} each (Was ${_money(line.product.price)})'
-                                                  : '${_money(line.product.price)} each',
-                                              style: const TextStyle(
-                                                color: Color(0xFF7E8495),
-                                                fontSize: 12,
-                                              ),
-                                            ),
-                                            if (line.discountValue > 0)
-                                              Text(
-                                                'Discount: ${line.discountType == 'PERCENT' ? '${line.discountValue}%' : _money(line.discountValue)}',
-                                                style: const TextStyle(
-                                                  color: Color(0xFFE35D5D),
-                                                  fontSize: 11,
-                                                  fontWeight: FontWeight.w600,
+                                            const SizedBox(height: 1),
+                                            Row(
+                                              children: [
+                                                Text(
+                                                  _money(line.unitPriceAfterDiscount),
+                                                  style: TextStyle(
+                                                    fontSize: 11,
+                                                    fontWeight: FontWeight.w600,
+                                                    color: isDark ? const Color(0xFFCBD5E1) : const Color(0xFF475569),
+                                                  ),
                                                 ),
-                                              ),
+                                                if (line.discountValue > 0) ...[
+                                                  const SizedBox(width: 4),
+                                                  Text(
+                                                    _money(line.product.price),
+                                                    style: const TextStyle(
+                                                      fontSize: 10,
+                                                      decoration: TextDecoration.lineThrough,
+                                                      color: Color(0xFF94A3B8),
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 4),
+                                                  Container(
+                                                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0.5),
+                                                    decoration: BoxDecoration(
+                                                      color: const Color(0xFFEF4444).withValues(alpha: 0.12),
+                                                      borderRadius: BorderRadius.circular(3),
+                                                    ),
+                                                    child: Text(
+                                                      line.discountType == 'PERCENT'
+                                                          ? '-${line.discountValue}%'
+                                                          : '-${_money(line.discountValue)}',
+                                                      style: const TextStyle(
+                                                        color: Color(0xFFEF4444),
+                                                        fontSize: 9,
+                                                        fontWeight: FontWeight.bold,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ],
+                                              ],
+                                            ),
                                             if (_enableMobileShopFeatures &&
                                                 line.product.imeis != null &&
-                                                line.product.imeis!
-                                                    .trim()
-                                                    .isNotEmpty) ...[
-                                              const SizedBox(height: 8),
+                                                line.product.imeis!.trim().isNotEmpty) ...[
+                                              const SizedBox(height: 6),
                                               ...List.generate(line.qty.toInt(), (i) {
-                                                final selectedList =
-                                                    _selectedCartImeis[line
-                                                        .product
-                                                        .id] ??
-                                                    [];
-                                                while (selectedList.length <=
-                                                    i) {
+                                                final selectedList = _selectedCartImeis[line.product.id] ?? [];
+                                                while (selectedList.length <= i) {
                                                   selectedList.add('');
                                                 }
-                                                final currentVal =
-                                                    selectedList[i];
-                                                final allImeis =
-                                                    line.product.imeiList;
-                                                final availableForThisIndex =
-                                                    allImeis.where((imei) {
-                                                      for (
-                                                        int otherIdx = 0;
-                                                        otherIdx < line.qty;
-                                                        otherIdx++
-                                                      ) {
-                                                        if (otherIdx != i &&
-                                                            otherIdx <
-                                                                selectedList
-                                                                    .length &&
-                                                            selectedList[otherIdx] ==
-                                                                imei) {
-                                                          return false;
-                                                        }
-                                                      }
-                                                      return true;
-                                                    }).toList();
+                                                final currentVal = selectedList[i];
+                                                final allImeis = line.product.imeiList;
+                                                final availableForThisIndex = allImeis.where((imei) {
+                                                  for (int otherIdx = 0; otherIdx < line.qty; otherIdx++) {
+                                                    if (otherIdx != i &&
+                                                        otherIdx < selectedList.length &&
+                                                        selectedList[otherIdx] == imei) {
+                                                      return false;
+                                                    }
+                                                  }
+                                                  return true;
+                                                }).toList();
 
                                                 return Padding(
-                                                  padding:
-                                                      const EdgeInsets.only(
-                                                        bottom: 4,
-                                                      ),
+                                                  padding: const EdgeInsets.only(bottom: 4),
                                                   child: Row(
-                                                    mainAxisSize:
-                                                        MainAxisSize.min,
+                                                    mainAxisSize: MainAxisSize.min,
                                                     children: [
                                                       Text(
                                                         'Unit ${i + 1} IMEI: ',
@@ -1730,51 +1894,22 @@ extension _point_of_saleExt on _DashboardScreenState {
                                                       DropdownButtonHideUnderline(
                                                         child: DropdownButton<String>(
                                                           isDense: true,
-                                                          style:
-                                                              const TextStyle(
-                                                                fontSize: 11,
-                                                                fontWeight:
-                                                                    FontWeight
-                                                                        .bold,
-                                                                color:
-                                                                    Colors.blue,
-                                                              ),
-                                                          value:
-                                                              currentVal.isEmpty
-                                                              ? null
-                                                              : currentVal,
-                                                          hint: const Text(
-                                                            'Select IMEI',
-                                                            style: TextStyle(
-                                                              fontSize: 11,
-                                                            ),
+                                                          style: const TextStyle(
+                                                            fontSize: 11,
+                                                            fontWeight: FontWeight.bold,
+                                                            color: Colors.blue,
                                                           ),
-                                                          items: availableForThisIndex
-                                                              .map(
-                                                                (
-                                                                  imei,
-                                                                ) => DropdownMenuItem(
-                                                                  value: imei,
-                                                                  child: Text(
-                                                                    imei,
-                                                                    style: const TextStyle(
-                                                                      fontSize:
-                                                                          11,
-                                                                    ),
-                                                                  ),
-                                                                ),
-                                                              )
-                                                              .toList(),
+                                                          value: currentVal.isEmpty ? null : currentVal,
+                                                          hint: const Text('Select IMEI', style: TextStyle(fontSize: 11)),
+                                                          items: availableForThisIndex.map((imei) => DropdownMenuItem(
+                                                            value: imei,
+                                                            child: Text(imei, style: const TextStyle(fontSize: 11)),
+                                                          )).toList(),
                                                           onChanged: (newVal) {
-                                                            if (newVal !=
-                                                                null) {
+                                                            if (newVal != null) {
                                                               setState(() {
-                                                                selectedList[i] =
-                                                                    newVal;
-                                                                _selectedCartImeis[line
-                                                                        .product
-                                                                        .id] =
-                                                                    selectedList;
+                                                                selectedList[i] = newVal;
+                                                                _selectedCartImeis[line.product.id] = selectedList;
                                                               });
                                                             }
                                                           },
@@ -1788,138 +1923,314 @@ extension _point_of_saleExt on _DashboardScreenState {
                                           ],
                                         ),
                                       ),
+                                      const SizedBox(width: 4),
+                                      // Discount icon button
                                       IconButton(
-                                        onPressed: () {
-                                          _showLineDiscountDialog(line.product);
-                                        },
-                                        icon: const Icon(
-                                          Icons.local_offer_outlined,
-                                          size: 18,
-                                          color: Color(0xFF327CF7),
-                                        ),
+                                        onPressed: () => _showLineDiscountDialog(line.product),
+                                        icon: const Icon(Icons.local_offer_outlined, size: 15),
+                                        color: AppTheme.brandIndigo,
+                                        tooltip: 'Discount',
+                                        visualDensity: VisualDensity.compact,
+                                        padding: EdgeInsets.zero,
+                                        constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
                                       ),
-                                      IconButton(
-                                        onPressed: () {
-                                          _decrementCartImei(line.product);
-                                        },
-                                        icon: const Icon(
-                                          Icons.remove,
-                                          size: 18,
+                                      // Quantity controls
+                                      Container(
+                                        decoration: BoxDecoration(
+                                          color: isDark ? const Color(0xFF2A344A) : Colors.white,
+                                          borderRadius: BorderRadius.circular(6),
+                                          border: Border.all(
+                                            color: isDark ? const Color(0xFF3B4863) : const Color(0xFFCBD5E1),
+                                          ),
                                         ),
-                                      ),
-                                      InkWell(
-                                        onTap: () =>
-                                            _showEditCartQuantityDialog(line),
-                                        borderRadius: BorderRadius.circular(6),
-                                        child: Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 8,
-                                            vertical: 3,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: Theme.of(context)
-                                                .colorScheme
-                                                .primary
-                                                .withValues(alpha: 0.08),
-                                            borderRadius:
-                                                BorderRadius.circular(6),
-                                          ),
-                                          child: Text(
-                                            line.qty.toStringAsFixed(
-                                              line.qty.truncateToDouble() ==
-                                                      line.qty
-                                                  ? 0
-                                                  : 2,
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            InkWell(
+                                              onTap: () => _decrementCartImei(line.product),
+                                              borderRadius: const BorderRadius.horizontal(left: Radius.circular(5)),
+                                              child: const Padding(
+                                                padding: EdgeInsets.symmetric(horizontal: 5, vertical: 3),
+                                                child: Icon(Icons.remove, size: 13),
+                                              ),
                                             ),
-                                            style: TextStyle(
-                                              fontWeight: FontWeight.w700,
-                                              color: Theme.of(context)
-                                                  .colorScheme
-                                                  .primary,
+                                            InkWell(
+                                              onTap: () => _showEditCartQuantityDialog(line),
+                                              child: Padding(
+                                                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 3),
+                                                child: Text(
+                                                  line.qty.toStringAsFixed(
+                                                    line.qty.truncateToDouble() == line.qty ? 0 : 2,
+                                                  ),
+                                                  style: TextStyle(
+                                                    fontWeight: FontWeight.w800,
+                                                    fontSize: 11.5,
+                                                    color: Theme.of(context).colorScheme.primary,
+                                                  ),
+                                                ),
+                                              ),
                                             ),
-                                          ),
+                                            InkWell(
+                                              onTap: () => _addToCartWithImeiSelection(line.product),
+                                              borderRadius: const BorderRadius.horizontal(right: Radius.circular(5)),
+                                              child: const Padding(
+                                                padding: EdgeInsets.symmetric(horizontal: 5, vertical: 3),
+                                                child: Icon(Icons.add, size: 13),
+                                              ),
+                                            ),
+                                          ],
                                         ),
                                       ),
-                                      IconButton(
-                                        onPressed: () {
-                                          _addToCartWithImeiSelection(
-                                            line.product,
-                                          );
-                                        },
-                                        icon: const Icon(Icons.add, size: 18),
-                                      ),
+                                      const SizedBox(width: 4),
+                                      // Delete button
                                       IconButton(
                                         onPressed: () {
                                           _removeCartImei(line.product);
                                           setState(() {
-                                            _posLineDiscounts.remove(
-                                              line.product.id,
-                                            );
+                                            _posLineDiscounts.remove(line.product.id);
                                           });
                                         },
-                                        icon: const Icon(
-                                          Icons.delete_outline,
-                                          size: 18,
-                                          color: Color(0xFFE35D5D),
-                                        ),
+                                        icon: const Icon(Icons.delete_outline, size: 16),
+                                        color: const Color(0xFFEF4444),
+                                        tooltip: 'Remove',
+                                        visualDensity: VisualDensity.compact,
+                                        padding: EdgeInsets.zero,
+                                        constraints: const BoxConstraints(minWidth: 26, minHeight: 26),
                                       ),
+                                      const SizedBox(width: 2),
+                                      // Line Total
                                       SizedBox(
-                                        width: 72,
+                                        width: 68,
                                         child: Text(
                                           _money(line.totalPrice),
                                           textAlign: TextAlign.right,
                                           style: const TextStyle(
-                                            fontWeight: FontWeight.w700,
+                                            fontWeight: FontWeight.w800,
+                                            fontSize: 12.5,
                                           ),
                                         ),
                                       ),
                                     ],
-                                  ),
-                                );
-                              }).toList(),
+                                  );
+                                },
+                              ),
                             ),
-                    ),
-                    const Divider(height: 20),
-                    _overviewRow('Subtotal:', _money(rawSubtotal)),
-                    if (invoiceDiscountAmount > 0)
-                      _overviewRow(
-                        'Discount (${_posInvoiceDiscountType == 'PERCENT' ? '$_posInvoiceDiscountValue%' : _money(_posInvoiceDiscountValue)}):',
-                        '-${_money(invoiceDiscountAmount)}',
-                        valueColor: const Color(0xFFE35D5D),
+                        ],
                       ),
-                    _overviewRow(
-                      'Tax (${taxRate.toStringAsFixed(1)}%):',
-                      _money(taxAmount),
                     ),
-                    Row(
-                      children: [
-                        TextButton.icon(
-                          onPressed: () {
-                            _showInvoiceDiscountDialog();
-                          },
-                          icon: const Icon(Icons.local_offer, size: 16),
-                          label: const Text('Add Discount'),
+                    const SizedBox(height: 12),
+                    // ── CARD 2: BILL SUMMARY & HERO TOTAL CONTAINER ──
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: isDark ? const Color(0xFF1E2433).withValues(alpha: 0.6) : const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(UiRadius.md),
+                        border: Border.all(
+                          color: isDark ? const Color(0xFF2E384D) : const Color(0xFFE2E8F0),
+                          width: 1.2,
                         ),
-                      ],
-                    ),
-                    CheckboxListTile(
-                      value: _posApplyTax,
-                      dense: true,
-                      contentPadding: EdgeInsets.zero,
-                      controlAffinity: ListTileControlAffinity.leading,
-                      title: const Text('Apply Tax to Bill'),
-                      onChanged: (value) {
-                        if (value == null) return;
-                        setState(() => _posApplyTax = value);
-                      },
-                    ),
-                    // Shipping / Delivery fee summary line in bill overview (only if fee applied)
-                    if (shippingCharges > 0 || (paymentMethod == 'COD' && _posShippingCharges > 0)) ...[
-                      _overviewRow(
-                        paymentMethod == 'COD' ? _t('Delivery Fee:') : 'Shipping:',
-                        _money(shippingCharges),
                       ),
-                    ],
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(Icons.receipt_long_rounded, size: 15, color: AppTheme.brandIndigo),
+                              const SizedBox(width: 6),
+                              Text(
+                                'BILL SUMMARY',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: 0.8,
+                                  color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          // Subtotal row
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                'Subtotal',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500,
+                                  color: isDark ? const Color(0xFFCBD5E1) : const Color(0xFF64748B),
+                                ),
+                              ),
+                              Text(
+                                _money(rawSubtotal),
+                                style: const TextStyle(
+                                  fontSize: 13.5,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          // Discount row with inline Add/Edit
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Row(
+                                children: [
+                                  Text(
+                                    'Discount',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w500,
+                                      color: isDark ? const Color(0xFFCBD5E1) : const Color(0xFF64748B),
+                                    ),
+                                  ),
+                                  if (_posInvoiceDiscountValue > 0) ...[
+                                    const SizedBox(width: 6),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFEF4444).withValues(alpha: 0.12),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: Text(
+                                        _posInvoiceDiscountType == 'PERCENT'
+                                            ? '${_posInvoiceDiscountValue}%'
+                                            : _money(_posInvoiceDiscountValue),
+                                        style: const TextStyle(
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
+                                          color: Color(0xFFEF4444),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                  const SizedBox(width: 8),
+                                  Material(
+                                    color: _posInvoiceDiscountValue > 0
+                                        ? const Color(0xFFEF4444).withValues(alpha: 0.1)
+                                        : AppTheme.brandIndigo.withValues(alpha: 0.1),
+                                    borderRadius: BorderRadius.circular(6),
+                                    child: InkWell(
+                                      onTap: _showInvoiceDiscountDialog,
+                                      borderRadius: BorderRadius.circular(6),
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 3,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          borderRadius: BorderRadius.circular(6),
+                                          border: Border.all(
+                                            color: _posInvoiceDiscountValue > 0
+                                                ? const Color(0xFFEF4444).withValues(alpha: 0.3)
+                                                : AppTheme.brandIndigo.withValues(alpha: 0.3),
+                                          ),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              _posInvoiceDiscountValue > 0
+                                                  ? Icons.edit_rounded
+                                                  : Icons.add_rounded,
+                                              size: 13,
+                                              color: _posInvoiceDiscountValue > 0
+                                                  ? const Color(0xFFEF4444)
+                                                  : AppTheme.brandIndigo,
+                                            ),
+                                            const SizedBox(width: 3),
+                                            Text(
+                                              _posInvoiceDiscountValue > 0 ? 'Edit' : 'Add',
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w700,
+                                                color: _posInvoiceDiscountValue > 0
+                                                    ? const Color(0xFFEF4444)
+                                                    : AppTheme.brandIndigo,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              Text(
+                                invoiceDiscountAmount > 0 ? '-${_money(invoiceDiscountAmount)}' : _money(0),
+                                style: TextStyle(
+                                  fontSize: 13.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: invoiceDiscountAmount > 0 ? const Color(0xFFEF4444) : null,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          // Tax row with inline checkbox
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Row(
+                                children: [
+                                  Text(
+                                    'Tax (${taxRate.toStringAsFixed(1)}%)',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w500,
+                                      color: isDark ? const Color(0xFFCBD5E1) : const Color(0xFF64748B),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  SizedBox(
+                                    height: 18,
+                                    width: 18,
+                                    child: Checkbox(
+                                      value: _posApplyTax,
+                                      visualDensity: VisualDensity.compact,
+                                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                      onChanged: (val) {
+                                        if (val != null) setState(() => _posApplyTax = val);
+                                      },
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              Text(
+                                _money(taxAmount),
+                                style: const TextStyle(
+                                  fontSize: 13.5,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
+                          // Shipping Charges
+                          if (shippingCharges > 0 || (paymentMethod == 'COD' && _posShippingCharges > 0)) ...[
+                            const SizedBox(height: 8),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  paymentMethod == 'COD' ? _t('Delivery Fee:') : 'Shipping:',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w500,
+                                    color: isDark ? const Color(0xFFCBD5E1) : const Color(0xFF64748B),
+                                  ),
+                                ),
+                                Text(
+                                  _money(shippingCharges),
+                                  style: const TextStyle(
+                                    fontSize: 13.5,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                     // Agent commission inputs (only when enabled in Settings)
                     if (_enableAgentCommission) ...[
                       const SizedBox(height: 4),
@@ -2364,98 +2675,426 @@ extension _point_of_saleExt on _DashboardScreenState {
                           ),
                         ),
                     ],
-                    const Divider(height: 20),
-                    _overviewRow('Total::', _money(grandTotal)),
-                    _overviewRow('Paid Amount:', _money(effectivePaidAmount)),
-                    _overviewRow('Balance Due:', _money(balanceAmount)),
-                    _overviewRow('Change:', _money(changeAmount)),
-                    const Divider(height: 18),
-                    if (_coupons.any((c) => c.active)) ...[
-                      Row(
-                        children: [
-                          Expanded(
-                            child: TextField(
-                              controller: _posCouponController,
-                              decoration: const InputDecoration(
-                                hintText: 'Enter coupon code',
-                                border: OutlineInputBorder(),
-                                isDense: true,
+                          // ── HERO GRAND TOTAL & STATUS BANNER ──
+                          Container(
+                            margin: const EdgeInsets.only(top: 14),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 14,
+                            ),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: isDark
+                                    ? [
+                                        const Color(0xFF1E1B4B),
+                                        const Color(0xFF2E2466),
+                                      ]
+                                    : [
+                                        const Color(0xFFEEF2FF),
+                                        const Color(0xFFE0E7FF),
+                                      ],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
                               ),
+                              borderRadius: BorderRadius.circular(UiRadius.md),
+                              border: Border.all(
+                                color: AppTheme.brandIndigo.withValues(alpha: 0.4),
+                                width: 1.5,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: AppTheme.brandIndigo.withValues(alpha: 0.12),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 3),
+                                ),
+                              ],
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  crossAxisAlignment: CrossAxisAlignment.center,
+                                  children: [
+                                    Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'GRAND TOTAL',
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w800,
+                                            letterSpacing: 1.2,
+                                            color: AppTheme.brandIndigo,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          _money(grandTotal),
+                                          style: TextStyle(
+                                            fontSize: 24,
+                                            fontWeight: FontWeight.w900,
+                                            letterSpacing: -0.5,
+                                            color: isDark
+                                                ? Colors.white
+                                                : const Color(0xFF1E1B4B),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    // Dynamic status badge
+                                    if (changeAmount > 0)
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 6,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                                          borderRadius: BorderRadius.circular(UiRadius.pill),
+                                          border: Border.all(
+                                            color: const Color(0xFF10B981).withValues(alpha: 0.6),
+                                            width: 1.2,
+                                          ),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            const Icon(
+                                              Icons.currency_exchange_rounded,
+                                              size: 16,
+                                              color: Color(0xFF059669),
+                                            ),
+                                            const SizedBox(width: 6),
+                                            Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                const Text(
+                                                  'CHANGE',
+                                                  style: TextStyle(
+                                                    fontSize: 9,
+                                                    fontWeight: FontWeight.w800,
+                                                    letterSpacing: 0.5,
+                                                    color: Color(0xFF059669),
+                                                  ),
+                                                ),
+                                                Text(
+                                                  _money(changeAmount),
+                                                  style: const TextStyle(
+                                                    fontSize: 13.5,
+                                                    fontWeight: FontWeight.w900,
+                                                    color: Color(0xFF059669),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ],
+                                        ),
+                                      )
+                                    else if (balanceAmount > 0)
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 6,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFFF59E0B).withValues(alpha: 0.15),
+                                          borderRadius: BorderRadius.circular(UiRadius.pill),
+                                          border: Border.all(
+                                            color: const Color(0xFFF59E0B).withValues(alpha: 0.6),
+                                            width: 1.2,
+                                          ),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            const Icon(
+                                              Icons.schedule_rounded,
+                                              size: 16,
+                                              color: Color(0xFFD97706),
+                                            ),
+                                            const SizedBox(width: 6),
+                                            Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                const Text(
+                                                  'BALANCE DUE',
+                                                  style: TextStyle(
+                                                    fontSize: 9,
+                                                    fontWeight: FontWeight.w800,
+                                                    letterSpacing: 0.5,
+                                                    color: Color(0xFFD97706),
+                                                  ),
+                                                ),
+                                                Text(
+                                                  _money(balanceAmount),
+                                                  style: const TextStyle(
+                                                    fontSize: 13.5,
+                                                    fontWeight: FontWeight.w900,
+                                                    color: Color(0xFFD97706),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ],
+                                        ),
+                                      )
+                                    else
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 7,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                                          borderRadius: BorderRadius.circular(UiRadius.pill),
+                                          border: Border.all(
+                                            color: const Color(0xFF10B981).withValues(alpha: 0.4),
+                                          ),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: const [
+                                            Icon(
+                                              Icons.check_circle_rounded,
+                                              size: 15,
+                                              color: Color(0xFF059669),
+                                            ),
+                                            SizedBox(width: 5),
+                                            Text(
+                                              'PAID IN FULL',
+                                              style: TextStyle(
+                                                fontSize: 11.5,
+                                                fontWeight: FontWeight.w800,
+                                                color: Color(0xFF059669),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                                if (effectivePaidAmount > 0) ...[
+                                  const SizedBox(height: 8),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 6,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: (isDark ? Colors.black : Colors.white).withValues(alpha: 0.35),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text(
+                                          'Paid Amount:',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w600,
+                                            color: isDark ? const Color(0xFFCBD5E1) : const Color(0xFF475569),
+                                          ),
+                                        ),
+                                        Text(
+                                          _money(effectivePaidAmount),
+                                          style: const TextStyle(
+                                            fontSize: 12.5,
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ],
                             ),
                           ),
-                          const SizedBox(width: 8),
-                          SizedBox(
-                            height: 40,
-                            child: ElevatedButton(
-                              onPressed: () {
-                                final code = _posCouponController.text.trim().toLowerCase();
-                                if (code.isEmpty) return;
-                                final match = _coupons.firstWhere(
-                                  (c) => c.active && c.code.trim().toLowerCase() == code,
-                                  orElse: () => _CouponItem(
-                                    code: '',
-                                    description: '',
-                                    discountPercent: 0,
-                                    active: false,
-                                  ),
-                                );
-                                if (match.code.isNotEmpty && match.discountPercent > 0) {
-                                  setState(() {
-                                    _posInvoiceDiscountType = 'PERCENT';
-                                    _posInvoiceDiscountValue = match.discountPercent;
-                                  });
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(
-                                        'Coupon applied: ${match.discountPercent}% discount (${match.code})',
+                          const SizedBox(height: 12),
+                          // Collapsible / Compact Coupon & Gift Card Section
+                          if (_coupons.any((c) => c.active)) ...[
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: SizedBox(
+                                    height: 38,
+                                    child: TextField(
+                                      controller: _posCouponController,
+                                      style: const TextStyle(fontSize: 12.5),
+                                      decoration: InputDecoration(
+                                        hintText: 'Enter coupon code',
+                                        prefixIcon: const Icon(
+                                          Icons.confirmation_number_outlined,
+                                          size: 16,
+                                        ),
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        contentPadding: const EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                          vertical: 8,
+                                        ),
+                                        isDense: true,
                                       ),
-                                      backgroundColor: AppTheme.brandEmerald,
                                     ),
-                                  );
-                                } else {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text('Invalid or inactive coupon code'),
-                                      backgroundColor: AppTheme.brandRose,
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                SizedBox(
+                                  height: 38,
+                                  child: ElevatedButton(
+                                    onPressed: () {
+                                      final code = _posCouponController.text.trim().toLowerCase();
+                                      if (code.isEmpty) return;
+                                      final match = _coupons.firstWhere(
+                                        (c) => c.active && c.code.trim().toLowerCase() == code,
+                                        orElse: () => _CouponItem(
+                                          code: '',
+                                          description: '',
+                                          discountPercent: 0,
+                                          active: false,
+                                        ),
+                                      );
+                                      if (match.code.isNotEmpty && match.discountPercent > 0) {
+                                        setState(() {
+                                          _posInvoiceDiscountType = 'PERCENT';
+                                          _posInvoiceDiscountValue = match.discountPercent;
+                                        });
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                              'Coupon applied: ${match.discountPercent}% discount (${match.code})',
+                                            ),
+                                            backgroundColor: AppTheme.brandEmerald,
+                                          ),
+                                        );
+                                      } else {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(
+                                            content: Text('Invalid or inactive coupon code'),
+                                            backgroundColor: AppTheme.brandRose,
+                                          ),
+                                        );
+                                      }
+                                    },
+                                    style: ElevatedButton.styleFrom(
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      padding: const EdgeInsets.symmetric(horizontal: 14),
                                     ),
-                                  );
-                                }
-                              },
-                              child: const Text('Apply'),
+                                    child: const Text('Apply'),
+                                  ),
+                                ),
+                              ],
                             ),
+                            const SizedBox(height: 8),
+                          ],
+                          Row(
+                            children: [
+                              Expanded(
+                                child: SizedBox(
+                                  height: 38,
+                                  child: TextField(
+                                    controller: _posGiftCardController,
+                                    style: const TextStyle(fontSize: 12.5),
+                                    decoration: InputDecoration(
+                                      hintText: 'Enter gift card code',
+                                      prefixIcon: const Icon(
+                                        Icons.card_giftcard_outlined,
+                                        size: 16,
+                                      ),
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      contentPadding: const EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                        vertical: 8,
+                                      ),
+                                      isDense: true,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              SizedBox(
+                                height: 38,
+                                child: OutlinedButton(
+                                  onPressed: () {},
+                                  style: OutlinedButton.styleFrom(
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    padding: const EdgeInsets.symmetric(horizontal: 14),
+                                  ),
+                                  child: const Text('Apply'),
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
-                      const SizedBox(height: 8),
-                    ],
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: _posGiftCardController,
-                            decoration: const InputDecoration(
-                              hintText: 'Enter gift card code',
-                              border: OutlineInputBorder(),
-                              isDense: true,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        SizedBox(
-                          height: 40,
-                          child: ElevatedButton(
-                            onPressed: () {},
-                            child: const Text('Apply'),
-                          ),
-                        ),
-                      ],
                     ),
                     const SizedBox(height: 12),
-                    const Text(
-                      'Payment Method',
-                      style: TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                    const SizedBox(height: 8),
+                    // ── CARD 3: PAYMENT METHOD & CUSTOMER ──
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: isDark ? const Color(0xFF131D2E) : Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: isDark
+                              ? const Color(0xFF1E2D45)
+                              : const Color(0xFFE2E8F0),
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.payment_rounded,
+                                size: 16,
+                                color: isDark
+                                    ? Colors.grey.shade400
+                                    : const Color(0xFF475569),
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                'PAYMENT METHOD',
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 0.5,
+                                  color: isDark
+                                      ? Colors.grey.shade400
+                                      : const Color(0xFF475569),
+                                ),
+                              ),
+                              const Spacer(),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 2.5,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: AppTheme.brandIndigo.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  paymentMethod,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppTheme.brandIndigo,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
                     Wrap(
                       spacing: 8,
                       runSpacing: 8,
@@ -2739,52 +3378,160 @@ extension _point_of_saleExt on _DashboardScreenState {
                           );
                         },
                       ),
-                      const SizedBox(height: 6),
-                      Text(
-                        'Address: ${selectedCustomer.address.isEmpty ? 'N/A' : selectedCustomer.address}',
-                        style: const TextStyle(
-                          color: Color(0xFF7E8495),
-                          fontSize: 12,
-                        ),
-                      ),
-                      Text(
-                        'Credit: ${_money(selectedCustomerOutstanding)} / Limit: ${selectedCustomer.creditLimit <= 0 ? 'No limit' : _money(selectedCustomer.creditLimit)}',
-                        style: const TextStyle(
-                          color: Color(0xFF7E8495),
-                          fontSize: 12,
-                        ),
-                      ),
-                      if (hasOverdueCredit) ...[
-                        const SizedBox(height: 6),
+                      if (_selectedCustomerId != null) ...[
+                        const SizedBox(height: 8),
                         Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 8,
-                          ),
+                          padding: const EdgeInsets.all(10),
                           decoration: BoxDecoration(
-                            color: const Color(0xFFFFEFEF),
+                            color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
                             borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: const Color(0xFFF2B6B6)),
-                          ),
-                          child: Text(
-                            oldestOverdueDate == null
-                                ? 'Overdue credit detected. Clear overdue balance before creating new credit sale.'
-                                : 'Overdue credit since ${_formatDate(oldestOverdueDate)}. Clear overdue balance before creating new credit sale.',
-                            style: const TextStyle(
-                              color: Color(0xFFB43E3E),
-                              fontWeight: FontWeight.w600,
+                            border: Border.all(
+                              color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
                             ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Icon(Icons.badge_outlined, size: 14, color: AppTheme.brandIndigo),
+                                  const SizedBox(width: 6),
+                                  Expanded(
+                                    child: Text(
+                                      selectedCustomer.name,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 12.5,
+                                      ),
+                                    ),
+                                  ),
+                                  InkWell(
+                                    onTap: () {
+                                      setState(() {
+                                        _selectedCustomerId = null;
+                                        _posCustomerSearchController.clear();
+                                        _posInvoiceDiscountType = 'FIXED';
+                                        _posInvoiceDiscountValue = 0.0;
+                                      });
+                                    },
+                                    child: const Icon(Icons.close, size: 16, color: Colors.grey),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                'Address: ${selectedCustomer.address.isEmpty ? 'N/A' : selectedCustomer.address}',
+                                style: TextStyle(
+                                  color: isDark ? Colors.grey.shade400 : const Color(0xFF64748B),
+                                  fontSize: 11.5,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Row(
+                                children: [
+                                  Text(
+                                    'Credit: ',
+                                    style: TextStyle(
+                                      color: isDark ? Colors.grey.shade400 : const Color(0xFF64748B),
+                                      fontSize: 11.5,
+                                    ),
+                                  ),
+                                  Text(
+                                    _money(selectedCustomerOutstanding),
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: selectedCustomerOutstanding > 0 ? const Color(0xFFE11D48) : null,
+                                      fontSize: 11.5,
+                                    ),
+                                  ),
+                                  Text(
+                                    ' / Limit: ${selectedCustomer.creditLimit <= 0 ? 'No limit' : _money(selectedCustomer.creditLimit)}',
+                                    style: TextStyle(
+                                      color: isDark ? Colors.grey.shade400 : const Color(0xFF64748B),
+                                      fontSize: 11.5,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              if (hasOverdueCredit) ...[
+                                const SizedBox(height: 6),
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 8,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFFFEFEF),
+                                    borderRadius: BorderRadius.circular(6),
+                                    border: Border.all(color: const Color(0xFFF2B6B6)),
+                                  ),
+                                  child: Text(
+                                    oldestOverdueDate == null
+                                        ? 'Overdue credit detected. Clear overdue balance before creating new credit sale.'
+                                        : 'Overdue credit since ${_formatDate(oldestOverdueDate)}. Clear overdue balance before creating new credit sale.',
+                                    style: const TextStyle(
+                                      color: Color(0xFFB43E3E),
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 11.5,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ],
                           ),
                         ),
                       ],
                     ],
-                    const SizedBox(height: 10),
-                    const Text(
-                      'Amount Paid',
-                      style: TextStyle(fontWeight: FontWeight.w600),
+                        ],
+                      ),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 12),
+                    // ── CARD 4: TENDER & PAYMENT ──
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: isDark ? const Color(0xFF131D2E) : Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: isDark
+                              ? const Color(0xFF1E2D45)
+                              : const Color(0xFFE2E8F0),
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.point_of_sale_rounded,
+                                size: 16,
+                                color: isDark
+                                    ? Colors.grey.shade400
+                                    : const Color(0xFF475569),
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                'TENDER & PAYMENT',
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 0.5,
+                                  color: isDark
+                                      ? Colors.grey.shade400
+                                      : const Color(0xFF475569),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          const Text(
+                            'Amount Paid',
+                            style: TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          const SizedBox(height: 8),
                     Row(
                       children: [
                         Expanded(
@@ -3233,9 +3980,13 @@ extension _point_of_saleExt on _DashboardScreenState {
                         ),
                       ),
                     ],
+                        ],
+                      ),
+                    ),
                     const SizedBox(height: 12),
+                    // ── CHECKOUT ACTION BUTTON ──
                     Container(
-                      height: 48,
+                      height: 52,
                       width: double.infinity,
                       decoration: BoxDecoration(
                         gradient: (cartItems.isEmpty || isAllLocations)
@@ -4405,13 +5156,27 @@ extension _point_of_saleExt on _DashboardScreenState {
                             borderRadius: BorderRadius.circular(UiRadius.md),
                           ),
                         ),
-                        child: const Text(
-                          'Complete Sale',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            fontSize: 14.5,
-                            letterSpacing: 0.3,
-                          ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              _editingSaleId != null
+                                  ? Icons.save_rounded
+                                  : Icons.check_circle_outline_rounded,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              _editingSaleId != null
+                                  ? 'Update Bill • ${_money(grandTotal)}'
+                                  : 'Complete Sale • ${_money(grandTotal)}',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 15,
+                                letterSpacing: 0.3,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
