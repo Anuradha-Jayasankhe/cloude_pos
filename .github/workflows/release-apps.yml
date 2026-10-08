@@ -3,7 +3,14 @@ name: Release Applications
 on:
   push:
     tags:
+      - 'v*'
       - 'release-v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version (e.g. 1.0.0)'
+        required: true
+        default: '1.0.0'
 
 permissions:
   contents: write
@@ -23,11 +30,16 @@ jobs:
         id: version
         shell: bash
         run: |
-          tag="${GITHUB_REF_NAME}"
-          version="${tag#release-v}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            version="${{ inputs.version }}"
+          else
+            tag="${GITHUB_REF_NAME}"
+            version="${tag#release-}"
+            version="${version#v}"
+          fi
 
-          if [ -z "$version" ] || [ "$version" = "$tag" ]; then
-            echo "Tag '$tag' does not contain a version after 'release-v'." >&2
+          if [ -z "$version" ]; then
+            echo "Tag does not contain a valid version." >&2
             exit 1
           fi
 
@@ -195,7 +207,7 @@ jobs:
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || format('v{0}', needs.prepare.outputs.version_name) }}
           name: ${{ needs.prepare.outputs.release_name }}
           generate_release_notes: true
           fail_on_unmatched_files: true
