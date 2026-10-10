@@ -876,10 +876,14 @@ extension _settings_tab_contentExt on _DashboardScreenState {
                         context,
                       ).colorScheme.primary.withValues(alpha: 0.14),
                     ),
-                    child:
-                        _companyLogoPath.isNotEmpty &&
-                            File(_companyLogoPath).existsSync()
-                        ? Image.file(File(_companyLogoPath), fit: BoxFit.cover)
+                    child: _companyLogoPath.isNotEmpty
+                        ? AppImage(
+                            imageUrl: _companyLogoPath,
+                            width: 52,
+                            height: 52,
+                            fit: BoxFit.contain,
+                            placeholder: const Icon(Icons.image_outlined),
+                          )
                         : const Icon(Icons.image_outlined),
                   ),
                   const SizedBox(width: 12),
@@ -908,6 +912,21 @@ extension _settings_tab_contentExt on _DashboardScreenState {
                       if (path == null || path.isEmpty) return;
                       setState(() => _companyLogoPath = path);
                       _persistWorkspaceData();
+
+                      // Auto-upload to sync server so all devices get this logo
+                      try {
+                        final apiClient = context.read<ApiClient>();
+                        final serverUrl = await apiClient.uploadImage(
+                          filePath: path,
+                          folder: 'logos',
+                        );
+                        if (serverUrl != null && serverUrl.isNotEmpty) {
+                          setState(() => _companyLogoPath = serverUrl);
+                          _persistWorkspaceData();
+                        }
+                      } catch (e) {
+                        debugPrint('[Settings] Logo upload error: $e');
+                      }
                     },
                     child: const Text('Upload Logo'),
                   ),

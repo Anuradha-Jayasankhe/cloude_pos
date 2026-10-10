@@ -2428,6 +2428,11 @@ extension _sales_pageExt on _DashboardScreenState {
                       theme = pw.ThemeData.withFont(base: pw.Font.ttf(ttfData));
                     } catch (_) {}
 
+                    pw.MemoryImage? logoImage;
+                    if (settings.showLogo) {
+                      logoImage = await PrintService.loadLogoImage(settings.logoUrl);
+                    }
+
                     final isA4Printer =
                         settings.printerType.trim().toUpperCase() == 'A4';
                     if (isA4Printer) {
@@ -2449,6 +2454,7 @@ extension _sales_pageExt on _DashboardScreenState {
                                 ? _storeLocation
                                 : _companyAddress,
                             storePhone: _companyPhone,
+                            logoImage: logoImage,
                           ),
                         ),
                       );
@@ -2478,6 +2484,7 @@ extension _sales_pageExt on _DashboardScreenState {
                                 ? _storeLocation
                                 : _companyAddress,
                             storePhone: _companyPhone,
+                            logoImage: logoImage,
                           ),
                         ),
                       );
@@ -2514,6 +2521,11 @@ extension _sales_pageExt on _DashboardScreenState {
                     theme = pw.ThemeData.withFont(base: pw.Font.ttf(ttfData));
                   } catch (_) {}
 
+                  pw.MemoryImage? logoImage;
+                  if (settings.showLogo) {
+                    logoImage = await PrintService.loadLogoImage(settings.logoUrl);
+                  }
+
                   final isA4Printer =
                       settings.printerType.trim().toUpperCase() == 'A4';
                   if (isA4Printer) {
@@ -2535,6 +2547,7 @@ extension _sales_pageExt on _DashboardScreenState {
                               ? _storeLocation
                               : _companyAddress,
                           storePhone: _companyPhone,
+                          logoImage: logoImage,
                         ),
                       ),
                     );
@@ -2564,6 +2577,7 @@ extension _sales_pageExt on _DashboardScreenState {
                               ? _storeLocation
                               : _companyAddress,
                           storePhone: _companyPhone,
+                          logoImage: logoImage,
                         ),
                       ),
                     );
@@ -2618,6 +2632,11 @@ extension _sales_pageExt on _DashboardScreenState {
                     theme = pw.ThemeData.withFont(base: pw.Font.ttf(ttfData));
                   } catch (_) {}
 
+                  pw.MemoryImage? logoImage;
+                  if (settings.showLogo) {
+                    logoImage = await PrintService.loadLogoImage(settings.logoUrl);
+                  }
+
                   final isA4Printer =
                       settings.printerType.trim().toUpperCase() == 'A4';
                   if (isA4Printer) {
@@ -2639,6 +2658,7 @@ extension _sales_pageExt on _DashboardScreenState {
                               ? _storeLocation
                               : _companyAddress,
                           storePhone: _companyPhone,
+                          logoImage: logoImage,
                         ),
                       ),
                     );
@@ -2668,6 +2688,7 @@ extension _sales_pageExt on _DashboardScreenState {
                               ? _storeLocation
                               : _companyAddress,
                           storePhone: _companyPhone,
+                          logoImage: logoImage,
                         ),
                       ),
                     );

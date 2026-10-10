@@ -1466,16 +1466,17 @@ extension _SyncPageExt on _DashboardScreenState {
                                                 : const Color(0xFFE5E7EB),
                                           ),
                                         ),
-                                        child: selectedImagePath != null &&
-                                                File(selectedImagePath!).existsSync()
-                                            ? ClipRRect(
-                                                borderRadius:
-                                                    BorderRadius.circular(11),
-                                                child: Image.file(
-                                                  File(selectedImagePath!),
-                                                  width: 80,
-                                                  height: 80,
-                                                  fit: BoxFit.cover,
+                                        child: selectedImagePath != null && selectedImagePath!.trim().isNotEmpty
+                                            ? AppImage(
+                                                imageUrl: selectedImagePath,
+                                                width: 80,
+                                                height: 80,
+                                                fit: BoxFit.cover,
+                                                borderRadius: BorderRadius.circular(11),
+                                                placeholder: Icon(
+                                                  Icons.add_photo_alternate_outlined,
+                                                  size: 32,
+                                                  color: isDark ? Colors.grey[500] : Colors.grey[400],
                                                 ),
                                               )
                                             : Icon(
@@ -1504,7 +1505,7 @@ extension _SyncPageExt on _DashboardScreenState {
                                             ),
                                             const SizedBox(height: 4),
                                             Text(
-                                              'JPG, PNG or WebP. Displayed on POS tiles and receipts.',
+                                              'JPG, PNG or WebP. Auto-syncs across all devices.',
                                               style: TextStyle(
                                                 fontSize: 11,
                                                 color: isDark
@@ -1531,9 +1532,27 @@ extension _SyncPageExt on _DashboardScreenState {
                                                       final ext = srcPath.split('.').last;
                                                       final destFile = File('${imagesDir.path}/prod_${DateTime.now().millisecondsSinceEpoch}.$ext');
                                                       await File(srcPath).copy(destFile.path);
+
+                                                      // Show immediate local preview
                                                       setLocal(() {
                                                         selectedImagePath = destFile.path;
                                                       });
+
+                                                      // Auto-upload to sync server so all devices can display it
+                                                      try {
+                                                        final apiClient = context.read<ApiClient>();
+                                                        final serverUrl = await apiClient.uploadImage(
+                                                          filePath: destFile.path,
+                                                          folder: 'products',
+                                                        );
+                                                        if (serverUrl != null && serverUrl.isNotEmpty) {
+                                                          setLocal(() {
+                                                            selectedImagePath = serverUrl;
+                                                          });
+                                                        }
+                                                      } catch (e) {
+                                                        debugPrint('[SyncPage] Auto-upload error: $e');
+                                                      }
                                                     }
                                                   },
                                                   icon: const Icon(Icons.upload_file_outlined, size: 15),
@@ -2683,7 +2702,7 @@ extension _SyncPageExt on _DashboardScreenState {
                             ),
                             const SizedBox(width: 8),
                             ElevatedButton(
-                              onPressed: () {
+                              onPressed: () async {
                                 if (existing == null &&
                                     (_isOwner || _isAdmin)) {
                                   final hasChecked = locChecked.values.any(
@@ -2875,6 +2894,23 @@ extension _SyncPageExt on _DashboardScreenState {
                                   attributeValues.remove('secondaryUnit');
                                   attributeValues.remove('unitConversionRatio');
                                   attributeValues.remove('secondaryPrice');
+                                }
+
+                                if (selectedImagePath != null &&
+                                    selectedImagePath!.trim().isNotEmpty &&
+                                    File(selectedImagePath!).existsSync()) {
+                                  try {
+                                    final apiClient = context.read<ApiClient>();
+                                    final serverUrl = await apiClient.uploadImage(
+                                      filePath: selectedImagePath!,
+                                      folder: 'products',
+                                    );
+                                    if (serverUrl != null && serverUrl.isNotEmpty) {
+                                      selectedImagePath = serverUrl;
+                                    }
+                                  } catch (e) {
+                                    debugPrint('[SyncPage] Final upload check error: $e');
+                                  }
                                 }
 
                                 final item = _ProductItem(

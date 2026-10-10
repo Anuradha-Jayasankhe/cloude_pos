@@ -515,18 +515,24 @@ class _LoginScreenState extends State<LoginScreen>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // Logo / icon
-                  Container(
+                  SizedBox(
                     width: _LoginSize.heroIconBox,
                     height: _LoginSize.heroIconBox,
-                    decoration: BoxDecoration(
-                      gradient: UiGradients.brand,
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: UiShadows.glow,
-                    ),
-                    child: const Icon(
-                      Icons.storefront_rounded,
-                      color: Colors.white,
-                      size: _LoginSize.heroIconSize,
+                    child: Image.asset(
+                      'assets/images/app_logo.png',
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, __, ___) => Container(
+                        decoration: BoxDecoration(
+                          gradient: UiGradients.brand,
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: UiShadows.glow,
+                        ),
+                        child: const Icon(
+                          Icons.storefront_rounded,
+                          color: Colors.white,
+                          size: _LoginSize.heroIconSize,
+                        ),
+                      ),
                     ),
                   ),
                   SizedBox(height: compact ? 20 : 40),

@@ -867,6 +867,7 @@ class PrintSettingsModel {
   final String? deliveryNotePrinterName;
   final double? deliveryNoteCustomWidthMm;
   final double? deliveryNoteCustomHeightMm;
+  final String? logoUrl;
 
   const PrintSettingsModel({
     required this.id,
@@ -877,6 +878,7 @@ class PrintSettingsModel {
     this.invoiceTemplate = 'PROFESSIONAL',
     this.autoPrint = false,
     this.showLogo = true,
+    this.logoUrl,
     this.showBarcode = false,
     this.showQr = true,
     this.showTax = true,

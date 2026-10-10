@@ -25,6 +25,11 @@ extension _products_pageExt on _DashboardScreenState {
         if (groupedMap.containsKey(key)) {
           final existing = groupedMap[key]!;
           existing.stock += p.stock;
+          if ((existing.imageUrl == null || existing.imageUrl!.trim().isEmpty) &&
+              p.imageUrl != null &&
+              p.imageUrl!.trim().isNotEmpty) {
+            existing.imageUrl = p.imageUrl;
+          }
         } else {
           groupedMap[key] = _ProductItem(
             id: p.id,
@@ -1288,8 +1293,7 @@ extension _products_pageExt on _DashboardScreenState {
                                           }
                                         }
                                         final hasImg = p.imageUrl != null &&
-                                            p.imageUrl!.trim().isNotEmpty &&
-                                            File(p.imageUrl!).existsSync();
+                                            p.imageUrl!.trim().isNotEmpty;
                                         return DataRow(
                                           cells: [
                                             DataCell(
@@ -1317,26 +1321,36 @@ extension _products_pageExt on _DashboardScreenState {
                                                         ),
                                                       ),
                                                       child: hasImg
-                                                          ? ClipRRect(
+                                                          ? AppImage(
+                                                              imageUrl: p.imageUrl,
+                                                              width: 38,
+                                                              height: 38,
+                                                              fit: BoxFit.cover,
                                                               borderRadius:
                                                                   BorderRadius.circular(7),
-                                                              child: Image.file(
-                                                                File(p.imageUrl!),
-                                                                width: 38,
-                                                                height: 38,
-                                                                fit: BoxFit.cover,
-                                                                errorBuilder: (_, __, ___) =>
-                                                                    Center(
-                                                                  child: Text(
-                                                                    p.name.isNotEmpty
-                                                                        ? p.name[0].toUpperCase()
-                                                                        : 'P',
-                                                                    style: TextStyle(
-                                                                      fontWeight: FontWeight.bold,
-                                                                      color: isDark
-                                                                          ? Colors.white70
-                                                                          : AppTheme.brandIndigo,
-                                                                    ),
+                                                              placeholder: Center(
+                                                                child: Text(
+                                                                  p.name.isNotEmpty
+                                                                      ? p.name[0].toUpperCase()
+                                                                      : 'P',
+                                                                  style: TextStyle(
+                                                                    fontWeight: FontWeight.bold,
+                                                                    color: isDark
+                                                                        ? Colors.white70
+                                                                        : AppTheme.brandIndigo,
+                                                                  ),
+                                                                ),
+                                                              ),
+                                                              errorWidget: Center(
+                                                                child: Text(
+                                                                  p.name.isNotEmpty
+                                                                      ? p.name[0].toUpperCase()
+                                                                      : 'P',
+                                                                  style: TextStyle(
+                                                                    fontWeight: FontWeight.bold,
+                                                                    color: isDark
+                                                                        ? Colors.white70
+                                                                        : AppTheme.brandIndigo,
                                                                   ),
                                                                 ),
                                                               ),

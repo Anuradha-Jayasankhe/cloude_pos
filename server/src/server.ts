@@ -13,11 +13,14 @@ import { plansRouter } from './routes/plans';
 import { releasesRouter, publicReleasesRouter } from './routes/releases';
 import { syncRouter } from './routes/sync';
 import { whatsappRouter } from './routes/whatsapp';
+import { uploadRouter } from './routes/upload';
+import { UploadedFileModel } from './models/UploadedFile';
 
 // Server instance configuration
 const app = express();
 
-app.use(express.json({ limit: '2mb' }));
+app.use(express.json({ limit: '30mb' }));
+app.use(express.urlencoded({ limit: '30mb', extended: true }));
 app.use(
   cors({
     origin: settings.corsAllowOrigins,
@@ -46,6 +49,52 @@ app.get('/admin/*', (_req, res) => {
   }
   res.status(404).json({ detail: 'Admin UI not bundled in this deployment' });
 });
+
+// Serve uploaded images (products, logos) from /uploads (with MongoDB Atlas persistence for Vercel)
+const uploadsDir = path.join(__dirname, '../data/uploads');
+try {
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+  }
+} catch (_) {}
+
+app.get('/uploads/:folder/:filename', async (req, res, next) => {
+  const { folder, filename } = req.params;
+  const localFile = path.join(uploadsDir, folder, filename);
+
+  if (fs.existsSync(localFile)) {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    return res.sendFile(localFile);
+  }
+
+  // Fallback to MongoDB Atlas (for Vercel serverless persistence)
+  try {
+    const doc = await UploadedFileModel.findOne({ filename });
+    if (doc && doc.data) {
+      res.setHeader('Content-Type', doc.mimeType || 'image/png');
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+      res.setHeader('Content-Length', doc.size || doc.data.length);
+      return res.send(doc.data);
+    }
+  } catch (err) {
+    console.error('[Uploads] Error retrieving from MongoDB:', err);
+  }
+
+  next();
+});
+
+app.use('/uploads', express.static(uploadsDir, {
+  maxAge: '30d',
+  setHeaders: (res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+  }
+}));
 
 // Serve the product showcase & downloads website from root /
 const websiteDir = path.join(__dirname, '../../website');
@@ -98,6 +147,7 @@ app.use(`${settings.apiPrefix}/admin/releases`, releasesRouter);
 app.use(`${settings.apiPrefix}/admin`, adminRouter);
 app.use(`${settings.apiPrefix}/whatsapp`, whatsappRouter);
 app.use('/api/whatsapp', whatsappRouter);
+app.use(`${settings.apiPrefix}/upload`, uploadRouter);
 
 // ── 5. Server Startup ──
 const start = async (): Promise<void> => {

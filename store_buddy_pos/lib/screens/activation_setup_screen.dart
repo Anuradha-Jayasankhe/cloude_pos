@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../services/auth_service.dart';
@@ -98,14 +98,20 @@ class _ActivationSetupScreenState extends State<ActivationSetupScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
+          SizedBox(
             width: 64,
             height: 64,
-            decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(16),
+            child: Image.asset(
+              'assets/images/app_logo.png',
+              fit: BoxFit.contain,
+              errorBuilder: (_, __, ___) => Container(
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: const Icon(Icons.storefront, color: Colors.black, size: 30),
+              ),
             ),
-            child: const Icon(Icons.storefront, color: Colors.black, size: 30),
           ),
           const SizedBox(height: 34),
           Text(

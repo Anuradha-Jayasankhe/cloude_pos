@@ -36,6 +36,7 @@ class ProductRepository {
             locationId: p.locationId,
             supplierId: p.supplierId,
             imeis: p.imeis,
+            imageUrl: p.imageUrl,
             synced: p.synced,
             createdAt: p.createdAt,
             updatedAt: p.updatedAt,
@@ -67,6 +68,7 @@ class ProductRepository {
         locationId: product.locationId,
         supplierId: product.supplierId,
         imeis: product.imeis,
+        imageUrl: product.imageUrl,
         synced: product.synced,
         createdAt: product.createdAt,
         updatedAt: product.updatedAt,
@@ -98,6 +100,7 @@ class ProductRepository {
       locationId: product.locationId,
       supplierId: product.supplierId,
       imeis: product.imeis,
+      imageUrl: product.imageUrl,
       synced: false, // will be set to true after server ack
       createdAt: product.createdAt ?? now,
       updatedAt: now,
@@ -141,6 +144,7 @@ class ProductRepository {
       locationId: product.locationId,
       supplierId: product.supplierId,
       imeis: product.imeis,
+      imageUrl: product.imageUrl,
       synced: false, // will be set to true after server ack
       createdAt: product.createdAt,
       updatedAt: now,

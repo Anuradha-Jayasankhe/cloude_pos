@@ -30,6 +30,7 @@ import '../services/whatsapp_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
 import '../theme/ui_system.dart';
+import '../widgets/app_image.dart';
 import 'login_screen.dart';
 
 part 'sub_screens/attendance_page.dart';
@@ -1784,6 +1785,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
           mapped.attributeValues = Map<String, dynamic>.from(
             existing.attributeValues,
           );
+        }
+        if ((mapped.imageUrl == null || mapped.imageUrl!.trim().isEmpty) &&
+            existing?.imageUrl != null &&
+            existing!.imageUrl!.trim().isNotEmpty) {
+          mapped.imageUrl = existing.imageUrl;
         }
         return mapped;
       }).toList();
@@ -8388,6 +8394,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
           child: PdfPreview(
             build: (format) async {
               final pdf = pw.Document();
+              pw.MemoryImage? logoImage;
+              if (settings.showLogo) {
+                logoImage = await PrintService.loadLogoImage(settings.logoUrl);
+              }
               if (isA4Printer) {
                 pdf.addPage(
                   pw.MultiPage(
@@ -8406,6 +8416,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           ? _storeLocation
                           : _companyAddress,
                       storePhone: _companyPhone,
+                      logoImage: logoImage,
                     ),
                   ),
                 );
@@ -8432,6 +8443,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           ? _storeLocation
                           : _companyAddress,
                       storePhone: _companyPhone,
+                      logoImage: logoImage,
                     ),
                   ),
                 );
@@ -8491,6 +8503,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       invoiceTemplate: rawSettings?.invoiceTemplate ?? 'PROFESSIONAL',
       autoPrint: _localAutoPrintOnSaleComplete,
       showLogo: prefs.getBool('bill_show_logo') ?? (_receiptShowLogo && (rawSettings?.showLogo ?? true)),
+      logoUrl: _companyLogoPath.isNotEmpty ? _companyLogoPath : null,
       showBarcode: prefs.getBool('bill_show_barcode') ?? (_receiptShowReceiptNumber && (rawSettings?.showBarcode ?? false)),
       showQr: prefs.getBool('bill_show_qr') ?? (rawSettings?.showQr ?? true),
       showTax: prefs.getBool('bill_show_tax') ?? (_receiptShowTax && (rawSettings?.showTax ?? true)),
@@ -14317,19 +14330,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
             child: Row(
               children: [
-                // Gradient icon
-                Container(
+                // Brand logo
+                SizedBox(
                   width: 40,
                   height: 40,
-                  decoration: BoxDecoration(
-                    gradient: UiGradients.brand,
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: UiShadows.glow,
-                  ),
-                  child: const Icon(
-                    Icons.storefront_rounded,
-                    color: Colors.white,
-                    size: 20,
+                  child: Image.asset(
+                    'assets/images/app_logo.png',
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, __, ___) => Container(
+                      decoration: BoxDecoration(
+                        gradient: UiGradients.brand,
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: UiShadows.glow,
+                      ),
+                      child: const Icon(
+                        Icons.storefront_rounded,
+                        color: Colors.white,
+                        size: 20,
+                      ),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -14539,19 +14558,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
             child: Row(
               children: [
-                Container(
+                SizedBox(
                   width: 34,
                   height: 34,
-                  decoration: BoxDecoration(
-                    color: sidebarAccent,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Center(
-                    child: Text(
-                      'S',
-                      style: TextStyle(
-                        color: const Color(0xFF101827),
-                        fontWeight: FontWeight.w700,
+                  child: Image.asset(
+                    'assets/images/app_logo.png',
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, __, ___) => Container(
+                      decoration: BoxDecoration(
+                        color: sidebarAccent,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Center(
+                        child: Text(
+                          'S',
+                          style: TextStyle(
+                            color: Color(0xFF101827),
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
                       ),
                     ),
                   ),

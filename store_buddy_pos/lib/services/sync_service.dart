@@ -1589,6 +1589,7 @@ class SyncService {
           existing?.warrantyMonths ??
           0,
       'locationId': (payload['locationId'] ?? existing?.locationId)?.toString(),
+      'imageUrl': (payload['imageUrl'] ?? payload['image_url'] ?? existing?.imageUrl)?.toString(),
       'synced': payload['synced'] ?? true,
       'createdAt':
           payload['createdAt'] ?? existing?.createdAt?.toIso8601String(),

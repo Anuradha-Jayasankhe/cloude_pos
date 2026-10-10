@@ -624,6 +624,11 @@ extension _point_of_saleExt on _DashboardScreenState {
       if (groupedMap.containsKey(key)) {
         final existing = groupedMap[key]!;
         existing.stock += p.stock;
+        if ((existing.imageUrl == null || existing.imageUrl!.trim().isEmpty) &&
+            p.imageUrl != null &&
+            p.imageUrl!.trim().isNotEmpty) {
+          existing.imageUrl = p.imageUrl;
+        }
       } else {
         groupedMap[key] = _ProductItem(
           id: p.id,
@@ -645,6 +650,7 @@ extension _point_of_saleExt on _DashboardScreenState {
           stock: p.stock,
           minStock: p.minStock,
           supplierId: p.supplierId,
+          imageUrl: p.imageUrl,
         );
       }
     }
@@ -1289,17 +1295,14 @@ extension _point_of_saleExt on _DashboardScreenState {
                                         final matchedWithImg = displayMatches.firstWhere(
                                           (m) =>
                                               m.imageUrl != null &&
-                                              m.imageUrl!.trim().isNotEmpty &&
-                                              File(m.imageUrl!).existsSync(),
+                                              m.imageUrl!.trim().isNotEmpty,
                                           orElse: () => p,
                                         );
                                         final imgPath = (p.imageUrl != null &&
-                                                p.imageUrl!.trim().isNotEmpty &&
-                                                File(p.imageUrl!).existsSync())
+                                                p.imageUrl!.trim().isNotEmpty)
                                             ? p.imageUrl
                                             : (matchedWithImg.imageUrl != null &&
-                                                    matchedWithImg.imageUrl!.trim().isNotEmpty &&
-                                                    File(matchedWithImg.imageUrl!).existsSync())
+                                                    matchedWithImg.imageUrl!.trim().isNotEmpty)
                                                 ? matchedWithImg.imageUrl
                                                 : null;
 
@@ -1321,36 +1324,42 @@ extension _point_of_saleExt on _DashboardScreenState {
                                                 ),
                                               ],
                                             ),
-                                            child: ClipRRect(
-                                              borderRadius: BorderRadius.circular(
-                                                UiRadius.sm,
+                                            child: AppImage(
+                                              imageUrl: imgPath,
+                                              height: 100,
+                                              width: double.infinity,
+                                              fit: BoxFit.cover,
+                                              borderRadius: BorderRadius.circular(UiRadius.sm),
+                                              placeholder: Container(
+                                                decoration: BoxDecoration(
+                                                  gradient: UiGradients.brand,
+                                                  borderRadius: BorderRadius.circular(UiRadius.sm),
+                                                ),
+                                                alignment: Alignment.center,
+                                                child: const Icon(Icons.inventory_2_outlined, color: Colors.white, size: 28),
                                               ),
-                                              child: Image.file(
-                                                File(imgPath),
-                                                fit: BoxFit.cover,
-                                                errorBuilder: (_, __, ___) =>
-                                                    Container(
-                                                  decoration: BoxDecoration(
-                                                    gradient: UiGradients.brand,
-                                                  ),
-                                                  alignment: Alignment.center,
-                                                  child: Column(
-                                                    mainAxisAlignment: MainAxisAlignment.center,
-                                                    children: [
-                                                      const Icon(Icons.inventory_2_outlined, color: Colors.white, size: 28),
-                                                      const SizedBox(height: 4),
-                                                      Text(
-                                                        p.name.isNotEmpty
-                                                            ? p.name[0].toUpperCase()
-                                                            : 'P',
-                                                        style: const TextStyle(
-                                                          color: Colors.white,
-                                                          fontSize: 16,
-                                                          fontWeight: FontWeight.bold,
-                                                        ),
+                                              errorWidget: Container(
+                                                decoration: BoxDecoration(
+                                                  gradient: UiGradients.brand,
+                                                  borderRadius: BorderRadius.circular(UiRadius.sm),
+                                                ),
+                                                alignment: Alignment.center,
+                                                child: Column(
+                                                  mainAxisAlignment: MainAxisAlignment.center,
+                                                  children: [
+                                                    const Icon(Icons.inventory_2_outlined, color: Colors.white, size: 28),
+                                                    const SizedBox(height: 4),
+                                                    Text(
+                                                      p.name.isNotEmpty
+                                                          ? p.name[0].toUpperCase()
+                                                          : 'P',
+                                                      style: const TextStyle(
+                                                        color: Colors.white,
+                                                        fontSize: 16,
+                                                        fontWeight: FontWeight.bold,
                                                       ),
-                                                    ],
-                                                  ),
+                                                    ),
+                                                  ],
                                                 ),
                                               ),
                                             ),

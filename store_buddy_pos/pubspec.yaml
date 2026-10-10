@@ -66,6 +66,7 @@ flutter:
 
   assets:
     - assets/fonts/geist-latin.woff2
+    - assets/images/app_logo.png
 
   fonts:
     - family: Geist

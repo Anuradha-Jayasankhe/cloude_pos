@@ -8,9 +8,50 @@ import 'package:printing/printing.dart';
 
 import 'dart:convert';
 import '../models/models.dart';
+import 'api_client.dart';
 
 class PrintService {
   static pw.ThemeData? _cachedReceiptTheme;
+
+  static Future<pw.MemoryImage?> loadLogoImage(String? rawLogoUrl) async {
+    try {
+      Uint8List? bytes;
+      if (rawLogoUrl != null && rawLogoUrl.trim().isNotEmpty) {
+        final resolved = ApiClient.resolveImageUrl(rawLogoUrl.trim());
+        if (resolved.startsWith('http://') || resolved.startsWith('https://')) {
+          final client = HttpClient()..connectionTimeout = const Duration(seconds: 3);
+          try {
+            final request = await client.getUrl(Uri.parse(resolved));
+            final response = await request.close();
+            if (response.statusCode == 200) {
+              bytes = await consolidateHttpClientResponseBytes(response);
+            }
+          } catch (_) {
+          } finally {
+            client.close();
+          }
+        } else {
+          final f = File(rawLogoUrl);
+          if (await f.exists()) {
+            bytes = await f.readAsBytes();
+          }
+        }
+      }
+
+      // If no custom logo bytes loaded, try default app logo asset
+      if (bytes == null || bytes.isEmpty) {
+        try {
+          final byteData = await rootBundle.load('assets/images/app_logo.png');
+          bytes = byteData.buffer.asUint8List();
+        } catch (_) {}
+      }
+
+      if (bytes != null && bytes.isNotEmpty) {
+        return pw.MemoryImage(bytes);
+      }
+    } catch (_) {}
+    return null;
+  }
 
   static Future<bool> kickCashDrawer({
     String? printerName,
@@ -227,6 +268,11 @@ class PrintService {
         ? settings.marginHorizontalMm! * PdfPageFormat.mm
         : 2.0 * PdfPageFormat.mm;
 
+    pw.MemoryImage? logoImage;
+    if (settings.showLogo) {
+      logoImage = await loadLogoImage(settings.logoUrl);
+    }
+
     if (isA4Printer) {
       pdf.addPage(
         pw.MultiPage(
@@ -240,6 +286,7 @@ class PrintService {
             storeName: storeName,
             storeAddress: storeAddress,
             storePhone: storePhone,
+            logoImage: logoImage,
           ),
         ),
       );
@@ -260,6 +307,7 @@ class PrintService {
             storeName: storeName,
             storeAddress: storeAddress,
             storePhone: storePhone,
+            logoImage: logoImage,
           ),
         ),
       );
@@ -1216,6 +1264,7 @@ class PrintService {
     required String storeName,
     required String storeAddress,
     required String storePhone,
+    pw.MemoryImage? logoImage,
   }) {
     final fontSize = (settings.fontSize <= 0 ? 8.5 : settings.fontSize).clamp(7.0, 11.0);
     final double rawSpacing = (settings.lineSpacing <= 0 ? 1.05 : settings.lineSpacing).clamp(0.8, 2.2);
@@ -1291,6 +1340,15 @@ class PrintService {
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.stretch,
       children: [
+        if (settings.showLogo && logoImage != null) ...[
+          pw.Center(
+            child: pw.Container(
+              height: 40,
+              margin: const pw.EdgeInsets.only(bottom: 6),
+              child: pw.Image(logoImage, fit: pw.BoxFit.contain),
+            ),
+          ),
+        ],
         if (settings.showShopHeader) ...[
           pw.Center(
             child: pw.Text(
@@ -1943,6 +2001,7 @@ class PrintService {
     required String storeName,
     required String storeAddress,
     required String storePhone,
+    pw.MemoryImage? logoImage,
   }) {
     final invoiceNo = _displayInvoiceNumber(sale);
     final invoiceDate = DateFormat(
@@ -1976,22 +2035,32 @@ class PrintService {
           child: pw.Row(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
-              pw.Container(
-                width: 78,
-                height: 78,
-                alignment: pw.Alignment.center,
-                decoration: pw.BoxDecoration(
-                  border: pw.Border.all(color: PdfColors.white, width: 1),
-                ),
-                child: pw.Text(
-                  'LOGO',
-                  style: pw.TextStyle(
-                    color: PdfColors.white,
-                    fontWeight: pw.FontWeight.bold,
+              if (settings.showLogo) ...[
+                if (logoImage != null)
+                  pw.Container(
+                    width: 78,
+                    height: 78,
+                    alignment: pw.Alignment.center,
+                    child: pw.Image(logoImage, fit: pw.BoxFit.contain),
+                  )
+                else
+                  pw.Container(
+                    width: 78,
+                    height: 78,
+                    alignment: pw.Alignment.center,
+                    decoration: pw.BoxDecoration(
+                      border: pw.Border.all(color: PdfColors.white, width: 1),
+                    ),
+                    child: pw.Text(
+                      'LOGO',
+                      style: pw.TextStyle(
+                        color: PdfColors.white,
+                        fontWeight: pw.FontWeight.bold,
+                      ),
+                    ),
                   ),
-                ),
-              ),
-              pw.SizedBox(width: 10),
+                pw.SizedBox(width: 10),
+              ],
               pw.Expanded(
                 child: pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,

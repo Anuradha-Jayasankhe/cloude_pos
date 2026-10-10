@@ -1,3 +1,7 @@
+import 'dart:convert';
+import 'dart:io';
+import 'dart:ui' as ui;
+
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:jwt_decoder/jwt_decoder.dart';
@@ -15,12 +19,123 @@ class ApiClient {
     defaultValue: _defaultBaseUrl,
   );
 
+  static ApiClient? _instance;
+  static ApiClient get instance => _instance ??= ApiClient();
+
   String _baseUrl;
   late final Dio _dio;
 
   String get baseUrl => _baseUrl;
+  String get serverHostUrl => _baseUrl.replaceAll(RegExp(r'/api/v1/*$'), '');
+
+  static String resolveImageUrl(String? rawUrl) {
+    if (rawUrl == null || rawUrl.trim().isEmpty) return '';
+    final trimmed = rawUrl.trim();
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      return trimmed;
+    }
+    if (trimmed.startsWith('/uploads/') || trimmed.startsWith('uploads/')) {
+      final cleanPath = trimmed.startsWith('/') ? trimmed : '/$trimmed';
+      final host = _instance?.serverHostUrl ??
+          configuredBaseUrl.replaceAll(RegExp(r'/api/v1/*$'), '');
+      return '$host$cleanPath';
+    }
+    return trimmed;
+  }
+
+  static Future<Uint8List> compressImageBytes(
+    Uint8List inputBytes, {
+    int maxDimension = 600,
+  }) async {
+    try {
+      final codec = await ui.instantiateImageCodec(inputBytes);
+      final frame = await codec.getNextFrame();
+      final width = frame.image.width;
+      final height = frame.image.height;
+
+      // If already within 600x600 and under 150KB, keep as is
+      if (width <= maxDimension &&
+          height <= maxDimension &&
+          inputBytes.lengthInBytes <= 150 * 1024) {
+        return inputBytes;
+      }
+
+      int? targetWidth;
+      int? targetHeight;
+      if (width >= height) {
+        if (width > maxDimension) {
+          targetWidth = maxDimension;
+        }
+      } else {
+        if (height > maxDimension) {
+          targetHeight = maxDimension;
+        }
+      }
+
+      final resizedCodec = await ui.instantiateImageCodec(
+        inputBytes,
+        targetWidth: targetWidth,
+        targetHeight: targetHeight,
+      );
+      final resizedFrame = await resizedCodec.getNextFrame();
+      final byteData = await resizedFrame.image.toByteData(
+        format: ui.ImageByteFormat.png,
+      );
+      if (byteData != null) {
+        final result = byteData.buffer.asUint8List();
+        debugPrint(
+          '[ApiClient] Auto-compressed image: ${width}x$height (${inputBytes.lengthInBytes ~/ 1024} KB) -> '
+          '${resizedFrame.image.width}x${resizedFrame.image.height} (${result.lengthInBytes ~/ 1024} KB)',
+        );
+        return result;
+      }
+    } catch (e) {
+      debugPrint('[ApiClient] Image compression error (using original): $e');
+    }
+    return inputBytes;
+  }
+
+  Future<String?> uploadImage({
+    required String filePath,
+    String folder = 'products',
+    Uint8List? fileBytes,
+    String? filename,
+  }) async {
+    try {
+      Uint8List bytes;
+      String name = filename ?? filePath.split(RegExp(r'[/\\]')).last;
+      if (fileBytes != null) {
+        bytes = fileBytes;
+      } else {
+        final file = File(filePath);
+        if (!await file.exists()) return null;
+        bytes = await file.readAsBytes();
+      }
+
+      // Auto-compress & downscale image to max 600x600 px before upload
+      bytes = await compressImageBytes(bytes, maxDimension: 600);
+
+      final base64Str = base64Encode(bytes);
+      final res = await _dio.post(
+        '/upload',
+        data: {
+          'image': base64Str,
+          'filename': name,
+          'folder': folder,
+        },
+      );
+
+      if (res.statusCode == 200 && res.data != null && res.data['url'] != null) {
+        return res.data['url'].toString();
+      }
+    } catch (e) {
+      debugPrint('[ApiClient] Error uploading image: $e');
+    }
+    return null;
+  }
 
   ApiClient({String? baseUrl}) : _baseUrl = baseUrl ?? configuredBaseUrl {
+    _instance = this;
     _dio = Dio(
       BaseOptions(
         baseUrl: _baseUrl,
