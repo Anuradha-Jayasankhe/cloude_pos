@@ -1,5 +1,5 @@
-import 'dart:typed_data';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
@@ -39,28 +39,88 @@ class PrintService {
       }
     }
 
-    // 2. Windows Raw Spooler / PowerShell kick
+    // 2. Windows Raw Spooler / rawprint kick (Sends raw binary pulse - no paper is printed!)
     if (Platform.isWindows && printerName != null && printerName.isNotEmpty && printerName != '__FIRST_PRINTER__') {
       try {
+        final possibleExePaths = [
+          'windows\\rawprint.exe',
+          '${File(Platform.resolvedExecutable).parent.path}\\rawprint.exe',
+          r'd:\bizpark\cloude_pos\store_buddy_pos\windows\rawprint.exe',
+          r'D:\bizpark\cloude_pos\store_buddy_pos\build\windows\x64\runner\Debug\rawprint.exe',
+        ];
+
+        String? exePath;
+        for (final p in possibleExePaths) {
+          if (File(p).existsSync()) {
+            exePath = p;
+            break;
+          }
+        }
+
         final tempDir = Directory.systemTemp;
         final tempFile = File('${tempDir.path}\\SB_drawer_kick_${DateTime.now().millisecondsSinceEpoch}.bin');
         await tempFile.writeAsBytes(kickCommand);
+
+        if (exePath != null) {
+          final res = await Process.run(exePath, [printerName, tempFile.path]);
+          try { await tempFile.delete(); } catch (_) {}
+          if (res.exitCode == 0) return true;
+        }
+
+        // Direct Win32 Spooler RAW fallback via P/Invoke (NEVER Out-Printer which renders bytes as text lines!)
+        final escapedPrinter = printerName.replaceAll("'", "''");
+        final psCode = '''
+        try {
+          \$rawHelper = @"
+          using System;
+          using System.Runtime.InteropServices;
+          public class WinRawDrawer {
+              [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Ansi)]
+              public class DOCINFOA {
+                  [MarshalAs(UnmanagedType.LPStr)] public string pDocName;
+                  [MarshalAs(UnmanagedType.LPStr)] public string pOutputFile;
+                  [MarshalAs(UnmanagedType.LPStr)] public string pDataType;
+              }
+              [DllImport("winspool.Drv", EntryPoint="OpenPrinterA", SetLastError=true, CharSet=CharSet.Ansi)]
+              public static extern bool OpenPrinter(string szPrinter, out IntPtr hPrinter, IntPtr pd);
+              [DllImport("winspool.Drv", EntryPoint="ClosePrinter", SetLastError=true)]
+              public static extern bool ClosePrinter(IntPtr hPrinter);
+              [DllImport("winspool.Drv", EntryPoint="StartDocPrinterA", SetLastError=true, CharSet=CharSet.Ansi)]
+              public static extern bool StartDocPrinter(IntPtr hPrinter, int level, [In] DOCINFOA di);
+              [DllImport("winspool.Drv", EntryPoint="EndDocPrinter", SetLastError=true)]
+              public static extern bool EndDocPrinter(IntPtr hPrinter);
+              [DllImport("winspool.Drv", EntryPoint="WritePrinter", SetLastError=true)]
+              public static extern bool WritePrinter(IntPtr hPrinter, IntPtr pBytes, int dwCount, out int dwWritten);
+              public static bool Send(string printer, byte[] bytes) {
+                  IntPtr hPrinter;
+                  if (!OpenPrinter(printer, out hPrinter, IntPtr.Zero)) return false;
+                  var di = new DOCINFOA { pDocName = "CashDrawerKick", pDataType = "RAW" };
+                  if (StartDocPrinter(hPrinter, 1, di)) {
+                      IntPtr p = Marshal.AllocCoTaskMem(bytes.Length);
+                      Marshal.Copy(bytes, 0, p, bytes.Length);
+                      int written;
+                      WritePrinter(hPrinter, p, bytes.Length, out written);
+                      Marshal.FreeCoTaskMem(p);
+                      EndDocPrinter(hPrinter);
+                  }
+                  ClosePrinter(hPrinter);
+                  return true;
+              }
+          }
+"@
+          Add-Type -TypeDefinition \$rawHelper
+          [WinRawDrawer]::Send('$escapedPrinter', [byte[]]@(0x1B, 0x70, $pulsePin, $tOn, $tOff))
+        } catch {}
+        ''';
 
         final res = await Process.run('powershell', [
           '-NoProfile',
           '-ExecutionPolicy',
           'Bypass',
           '-Command',
-          '''
-          try {
-            [System.IO.File]::WriteAllBytes("${tempFile.path.replaceAll(r'\', r'\\')}", [byte[]]@(0x1B, 0x70, $pulsePin, $tOn, $tOff))
-            Get-Content -Path "${tempFile.path.replaceAll(r'\', r'\\')}" -Raw -Encoding Byte | Out-Printer -Name "$printerName"
-          } catch {}
-          '''
+          psCode,
         ]);
-        if (await tempFile.exists()) {
-          try { await tempFile.delete(); } catch (_) {}
-        }
+        try { if (await tempFile.exists()) await tempFile.delete(); } catch (_) {}
         return res.exitCode == 0;
       } catch (_) {}
     }
@@ -162,7 +222,7 @@ class PrintService {
 
     final topMargin = (settings.marginVerticalMm != null && settings.marginVerticalMm! >= 0)
         ? settings.marginVerticalMm! * PdfPageFormat.mm
-        : 3.0 * PdfPageFormat.mm;
+        : 1.5 * PdfPageFormat.mm;
     final leftMargin = (settings.marginHorizontalMm != null && settings.marginHorizontalMm! >= 0)
         ? settings.marginHorizontalMm! * PdfPageFormat.mm
         : 2.0 * PdfPageFormat.mm;
@@ -255,19 +315,44 @@ class PrintService {
         final widthMm = (settings.paperWidthMm != null && settings.paperWidthMm! > 0)
             ? settings.paperWidthMm!
             : fallbackWidthMm;
+        // On Windows, double.infinity in DEVMODE dmPaperLength overflows to short -32768,
+        // which causes CreateDC to fail. Use a safe finite roll height and usePrinterSettings: true for thermal.
         final paperFormat = isA4Printer
             ? PdfPageFormat.a4
             : PdfPageFormat(
                 widthMm * PdfPageFormat.mm,
-                double.infinity,
+                2000.0 * PdfPageFormat.mm,
               );
 
-        await Printing.directPrintPdf(
-          printer: target,
-          onLayout: (_) async => pdfBytes,
-          format: paperFormat,
-        );
-        return;
+        bool printed = false;
+        for (int attempt = 1; attempt <= 3; attempt++) {
+          try {
+            final ok = await Printing.directPrintPdf(
+              printer: target,
+              onLayout: (_) async => pdfBytes,
+              name: 'Invoice_${sale.id}',
+              format: paperFormat,
+              usePrinterSettings: !isA4Printer,
+            );
+            if (ok) {
+              printed = true;
+              debugPrint('Receipt directPrintPdf succeeded on attempt $attempt to ${target.name}');
+              break;
+            } else {
+              debugPrint('Receipt directPrintPdf returned false on attempt $attempt (printer busy or offline)');
+              if (attempt < 3) {
+                await Future.delayed(const Duration(milliseconds: 800));
+              }
+            }
+          } catch (e) {
+            debugPrint('Receipt directPrintPdf attempt $attempt failed: $e');
+            if (attempt < 3) {
+              await Future.delayed(const Duration(milliseconds: 800));
+            }
+          }
+        }
+        if (printed) return;
+        debugPrint('Direct print to ${target.name} did not succeed after 3 attempts. Falling back to layoutPdf.');
       }
     }
 
@@ -1132,22 +1217,41 @@ class PrintService {
     required String storeAddress,
     required String storePhone,
   }) {
-    final fontSize = settings.fontSize;
-    final textStyle = pw.TextStyle(fontSize: fontSize);
+    final fontSize = (settings.fontSize <= 0 ? 8.5 : settings.fontSize).clamp(7.0, 11.0);
+    final double rawSpacing = (settings.lineSpacing <= 0 ? 1.05 : settings.lineSpacing).clamp(0.8, 2.2);
+    // Vertical padding on each item in the items table
+    final double itemRowPadding = ((rawSpacing - 0.7) * 4.0).clamp(0.4, 7.5);
+    // Vertical padding on info, customer, total, and payment rows
+    final double infoRowGap = ((rawSpacing - 0.7) * 2.5).clamp(0.3, 5.0);
+    // Spacing around dividers and section headers
+    final double dividerHeight = (rawSpacing * 2.5).clamp(2.0, 6.0);
+    final double sectionGap = (rawSpacing * 3.0).clamp(2.0, 8.0);
+
+    final textStyle = pw.TextStyle(fontSize: fontSize, lineSpacing: rawSpacing);
     final boldStyle = pw.TextStyle(
       fontSize: fontSize,
       fontWeight: pw.FontWeight.bold,
+      lineSpacing: rawSpacing,
     );
     final titleStyle = pw.TextStyle(
-      fontSize: fontSize + 5,
+      fontSize: fontSize + 3.5,
       fontWeight: pw.FontWeight.bold,
-      letterSpacing: 1.2,
+      letterSpacing: 1.0,
     );
     final sectionStyle = pw.TextStyle(
-      fontSize: fontSize + 1,
+      fontSize: fontSize + 0.5,
       fontWeight: pw.FontWeight.bold,
+      lineSpacing: rawSpacing,
     );
-    final smallStyle = pw.TextStyle(fontSize: fontSize - 1);
+    final smallStyle = pw.TextStyle(
+      fontSize: (fontSize - 1.5).clamp(6.5, 8.5),
+      lineSpacing: rawSpacing,
+    );
+    final smallBoldStyle = pw.TextStyle(
+      fontSize: (fontSize - 1.5).clamp(6.5, 8.5),
+      fontWeight: pw.FontWeight.bold,
+      lineSpacing: rawSpacing,
+    );
     final customNote = _parseCustomNotes(sale.notes);
     final invoiceNumber = _displayInvoiceNumber(sale);
     final cashierName = _displayCashierName(sale);
@@ -1192,14 +1296,14 @@ class PrintService {
             child: pw.Text(
               _pdfSafe(storeName),
               style: pw.TextStyle(
-                fontSize: fontSize + 4,
+                fontSize: fontSize + 3.5,
                 fontWeight: pw.FontWeight.bold,
               ),
               textAlign: pw.TextAlign.center,
             ),
           ),
           if (settings.showSlogan && (settings.invoiceSlogan?.trim().isNotEmpty == true)) ...[
-            pw.SizedBox(height: 2),
+            pw.SizedBox(height: infoRowGap),
             pw.Center(
               child: pw.Text(
                 _pdfSafe(settings.invoiceSlogan?.trim() ?? ''),
@@ -1212,7 +1316,7 @@ class PrintService {
             ),
           ],
           if (storeAddress.trim().isNotEmpty) ...[
-            pw.SizedBox(height: 2),
+            pw.SizedBox(height: infoRowGap),
             pw.Center(
               child: pw.Text(
                 _pdfSafe(storeAddress),
@@ -1222,7 +1326,7 @@ class PrintService {
             ),
           ],
           if (storePhone.trim().isNotEmpty) ...[
-            pw.SizedBox(height: 2),
+            pw.SizedBox(height: infoRowGap),
             pw.Center(
               child: pw.Text(
                 _pdfSafe(storePhone),
@@ -1231,10 +1335,10 @@ class PrintService {
               ),
             ),
           ],
-          pw.SizedBox(height: 6),
+          pw.SizedBox(height: infoRowGap),
         ],
-        pw.Divider(thickness: 0.8, color: PdfColors.black),
-        pw.SizedBox(height: 4),
+        pw.Divider(height: dividerHeight, thickness: 0.5, color: PdfColors.black),
+        pw.SizedBox(height: infoRowGap),
         pw.Center(
           child: pw.Text(
             isInstallmentSale ? 'INSTALLMENT AGREEMENT' : 'RECEIPT',
@@ -1242,104 +1346,130 @@ class PrintService {
             textAlign: pw.TextAlign.center,
           ),
         ),
-        pw.SizedBox(height: 4),
-        pw.Divider(thickness: 0.8, color: PdfColors.black),
-        pw.SizedBox(height: 6),
+        pw.SizedBox(height: infoRowGap),
+        pw.Divider(height: dividerHeight, thickness: 0.5, color: PdfColors.black),
+        pw.SizedBox(height: infoRowGap),
         if (settings.showInvoiceNumber)
-          pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-            children: [
-              pw.Text('Invoice', style: textStyle),
-              pw.Text(_pdfSafe(invoiceNumber), style: boldStyle),
-            ],
+          pw.Padding(
+            padding: pw.EdgeInsets.symmetric(vertical: infoRowGap),
+            child: pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text('Invoice', style: textStyle),
+                pw.Text(_pdfSafe(invoiceNumber), style: boldStyle),
+              ],
+            ),
           ),
         if (settings.showDateTime)
-          pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-            children: [
-              pw.Text('Date', style: textStyle),
-              pw.Text(_pdfSafe(saleDate), style: textStyle),
-            ],
+          pw.Padding(
+            padding: pw.EdgeInsets.symmetric(vertical: infoRowGap),
+            child: pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text('Date', style: textStyle),
+                pw.Text(_pdfSafe(saleDate), style: textStyle),
+              ],
+            ),
           ),
         if (settings.showCashierName)
-          pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-            children: [
-              pw.Text('Cashier', style: textStyle),
-              pw.Text(_pdfSafe(cashierName), style: textStyle),
-            ],
+          pw.Padding(
+            padding: pw.EdgeInsets.symmetric(vertical: infoRowGap),
+            child: pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text('Cashier', style: textStyle),
+                pw.Text(_pdfSafe(cashierName), style: textStyle),
+              ],
+            ),
           ),
         if (settings.showCustomerName &&
             sale.customer != null &&
             sale.customer!.name.trim().isNotEmpty &&
             sale.customer!.name != 'Walk-in Customer') ...[
-          pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-            children: [
-              pw.Text('Customer', style: textStyle),
-              pw.Text(_pdfSafe(sale.customer!.name), style: boldStyle),
-            ],
-          ),
-          if (sale.customer!.phone.trim().isNotEmpty)
-            pw.Row(
+          pw.Padding(
+            padding: pw.EdgeInsets.symmetric(vertical: infoRowGap),
+            child: pw.Row(
               mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
               children: [
-                pw.Text('Phone', style: textStyle),
-                pw.Text(_pdfSafe(sale.customer!.phone), style: textStyle),
+                pw.Text('Customer', style: textStyle),
+                pw.Text(_pdfSafe(sale.customer!.name), style: boldStyle),
               ],
+            ),
+          ),
+          if (sale.customer!.phone.trim().isNotEmpty)
+            pw.Padding(
+              padding: pw.EdgeInsets.symmetric(vertical: infoRowGap),
+              child: pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Text('Phone', style: textStyle),
+                  pw.Text(_pdfSafe(sale.customer!.phone), style: textStyle),
+                ],
+              ),
             ),
           if (settings.showCustomerAddress &&
               sale.customer!.address != null &&
               sale.customer!.address!.trim().isNotEmpty)
-            pw.Row(
-              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-              children: [
-                pw.Text('Address', style: textStyle),
-                pw.Text(_pdfSafe(sale.customer!.address!), style: textStyle),
-              ],
+            pw.Padding(
+              padding: pw.EdgeInsets.symmetric(vertical: infoRowGap),
+              child: pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Text('Address', style: textStyle),
+                  pw.Text(_pdfSafe(sale.customer!.address!), style: textStyle),
+                ],
+              ),
             ),
           if (sale.shippingAddress != null &&
               sale.shippingAddress!.trim().isNotEmpty)
-            pw.Row(
-              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-              children: [
-                pw.Text('Shipping Address', style: boldStyle),
-                pw.Text(_pdfSafe(sale.shippingAddress!), style: textStyle),
-              ],
+            pw.Padding(
+              padding: pw.EdgeInsets.symmetric(vertical: infoRowGap),
+              child: pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Text('Shipping Address', style: boldStyle),
+                  pw.Text(_pdfSafe(sale.shippingAddress!), style: textStyle),
+                ],
+              ),
             ),
         ],
         if ((customerOutstandingBefore ?? 0) > 0 ||
             (customerOutstandingAfter ?? 0) > 0) ...[
-          pw.SizedBox(height: 8),
+          pw.SizedBox(height: sectionGap),
           pw.Text('Customer Balance', style: sectionStyle),
           if ((customerOutstandingBefore ?? 0) > 0)
-            pw.Row(
-              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-              children: [
-                pw.Text('Before', style: smallStyle),
-                pw.Text(
-                  _money(currencySymbol, customerOutstandingBefore ?? 0.0),
-                  style: smallStyle,
-                ),
-              ],
+            pw.Padding(
+              padding: pw.EdgeInsets.symmetric(vertical: infoRowGap),
+              child: pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Text('Before', style: smallStyle),
+                  pw.Text(
+                    _money(currencySymbol, customerOutstandingBefore ?? 0.0),
+                    style: smallStyle,
+                  ),
+                ],
+              ),
             ),
           if ((customerOutstandingAfter ?? 0) > 0)
-            pw.Row(
-              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-              children: [
-                pw.Text('After', style: smallStyle),
-                pw.Text(
-                  _money(currencySymbol, customerOutstandingAfter ?? 0.0),
-                  style: smallStyle,
-                ),
-              ],
+            pw.Padding(
+              padding: pw.EdgeInsets.symmetric(vertical: infoRowGap),
+              child: pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                children: [
+                  pw.Text('After', style: smallStyle),
+                  pw.Text(
+                    _money(currencySymbol, customerOutstandingAfter ?? 0.0),
+                    style: smallStyle,
+                  ),
+                ],
+              ),
             ),
         ],
         if (settings.showItemTable) ...[
-          pw.SizedBox(height: 8),
-          pw.Divider(thickness: 0.8, color: PdfColors.black),
+          pw.Divider(height: dividerHeight, thickness: 0.5, color: PdfColors.black),
           pw.Padding(
-            padding: const pw.EdgeInsets.symmetric(vertical: 4),
+            padding: pw.EdgeInsets.symmetric(vertical: (infoRowGap + 0.5).clamp(0.8, 3.0)),
             child: pw.Row(
               children: [
                 pw.Expanded(flex: 3, child: pw.Text('Item', style: sectionStyle)),
@@ -1362,7 +1492,7 @@ class PrintService {
               ],
             ),
           ),
-          pw.Divider(thickness: 0.8, color: PdfColors.black),
+          pw.Divider(height: dividerHeight, thickness: 0.5, color: PdfColors.black),
           ...sale.items.asMap().entries.map((entry) {
             final idx = entry.key + 1;
             final item = entry.value;
@@ -1376,9 +1506,10 @@ class PrintService {
             final itemDisplayName = settings.showItemNumbers
                 ? '$idx. ${_pdfSafe(item.productName)}'
                 : _pdfSafe(item.productName);
+            final bool hasExtraDetails = item.quantity != 1.0 || lineDiscount > 0 || (item.originalPrice != item.unitPrice);
 
             return pw.Padding(
-              padding: const pw.EdgeInsets.symmetric(vertical: 6),
+              padding: pw.EdgeInsets.symmetric(vertical: itemRowPadding),
               child: pw.Column(
                 crossAxisAlignment: pw.CrossAxisAlignment.stretch,
                 children: [
@@ -1410,150 +1541,177 @@ class PrintService {
                       ),
                     ],
                   ),
-                  pw.SizedBox(height: 2),
-                  pw.Text(
-                    '${_money(currencySymbol, item.originalPrice)} x ${_formatQuantity(item.quantity)}',
-                    style: smallStyle,
-                  ),
-                  if (itemImeis.isNotEmpty)
+                  if (hasExtraDetails)
                     pw.Padding(
-                      padding: const pw.EdgeInsets.only(top: 2),
+                      padding: pw.EdgeInsets.only(top: (infoRowGap * 0.5).clamp(0.3, 2.0)),
                       child: pw.Text(
-                        'IMEI: ${itemImeis.join(", ")}',
-                        style: smallStyle.copyWith(
-                          fontWeight: pw.FontWeight.bold,
-                        ),
+                        '${_money(currencySymbol, item.unitPrice)} ea${item.quantity > 1 ? " x ${_formatQuantity(item.quantity)}" : ""}${lineDiscount > 0 ? " (Disc: ${_negativeMoney(currencySymbol, lineDiscount)})" : ""}',
+                        style: smallStyle,
                       ),
                     ),
-                  if (lineDiscount > 0)
-                    pw.Text(
-                      'Discount: ${_negativeMoney(currencySymbol, lineDiscount)}',
-                      style: smallStyle,
+                  if (itemImeis.isNotEmpty)
+                    pw.Padding(
+                      padding: pw.EdgeInsets.only(top: (infoRowGap * 0.5).clamp(0.3, 2.0)),
+                      child: pw.Text(
+                        'IMEI: ${itemImeis.join(", ")}',
+                        style: smallBoldStyle,
+                      ),
                     ),
                 ],
               ),
             );
           }),
         ],
-        pw.SizedBox(height: 4),
-        pw.Divider(thickness: 0.8, color: PdfColors.black),
+        pw.Divider(height: dividerHeight, thickness: 0.5, color: PdfColors.black),
         if (settings.showSubtotal)
-          pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-            children: [
-              pw.Text('Sub Total', style: textStyle),
-              pw.Text(_money(currencySymbol, originalSubtotal), style: textStyle),
-            ],
+          pw.Padding(
+            padding: pw.EdgeInsets.symmetric(vertical: infoRowGap),
+            child: pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text('Sub Total', style: textStyle),
+                pw.Text(_money(currencySymbol, originalSubtotal), style: textStyle),
+              ],
+            ),
           ),
         if (settings.showDiscount && lineDiscountTotal > 0)
-          pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-            children: [
-              pw.Text('Discount', style: textStyle),
-              pw.Text(
-                _negativeMoney(currencySymbol, lineDiscountTotal),
-                style: textStyle,
-              ),
-            ],
+          pw.Padding(
+            padding: pw.EdgeInsets.symmetric(vertical: infoRowGap),
+            child: pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text('Discount', style: textStyle),
+                pw.Text(
+                  _negativeMoney(currencySymbol, lineDiscountTotal),
+                  style: textStyle,
+                ),
+              ],
+            ),
           ),
         if (settings.showDiscount && sale.discount > 0)
-          pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-            children: [
-              pw.Text('Invoice Discount', style: textStyle),
-              pw.Text(
-                _negativeMoney(currencySymbol, sale.discount),
-                style: textStyle,
-              ),
-            ],
+          pw.Padding(
+            padding: pw.EdgeInsets.symmetric(vertical: infoRowGap),
+            child: pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text('Invoice Discount', style: textStyle),
+                pw.Text(
+                  _negativeMoney(currencySymbol, sale.discount),
+                  style: textStyle,
+                ),
+              ],
+            ),
           ),
         if (settings.showTax && sale.tax > 0)
-          pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-            children: [
-              pw.Text('Tax', style: textStyle),
-              pw.Text(_money(currencySymbol, sale.tax), style: textStyle),
-            ],
+          pw.Padding(
+            padding: pw.EdgeInsets.symmetric(vertical: infoRowGap),
+            child: pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text('Tax', style: textStyle),
+                pw.Text(_money(currencySymbol, sale.tax), style: textStyle),
+              ],
+            ),
           ),
         if (sale.shippingCharges > 0)
-          pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-            children: [
-              pw.Text('Shipping / Delivery', style: textStyle),
-              pw.Text(
-                _money(currencySymbol, sale.shippingCharges),
-                style: textStyle,
-              ),
-            ],
+          pw.Padding(
+            padding: pw.EdgeInsets.symmetric(vertical: infoRowGap),
+            child: pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text('Shipping / Delivery', style: textStyle),
+                pw.Text(
+                  _money(currencySymbol, sale.shippingCharges),
+                  style: textStyle,
+                ),
+              ],
+            ),
           ),
         if (settings.showTotal) ...[
-          pw.SizedBox(height: 4),
-          pw.Divider(thickness: 0.8, color: PdfColors.black),
-          pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-            children: [
-              pw.Text(
-                'Total',
-                style: pw.TextStyle(
-                  fontSize: fontSize + 3,
-                  fontWeight: pw.FontWeight.bold,
+          pw.Divider(height: dividerHeight, thickness: 0.5, color: PdfColors.black),
+          pw.Padding(
+            padding: pw.EdgeInsets.symmetric(vertical: infoRowGap),
+            child: pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text(
+                  'Total',
+                  style: pw.TextStyle(
+                    fontSize: fontSize + 2.0,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
                 ),
-              ),
-              pw.Text(
-                _money(currencySymbol, sale.total),
-                style: pw.TextStyle(
-                  fontSize: fontSize + 3,
-                  fontWeight: pw.FontWeight.bold,
+                pw.Text(
+                  _money(currencySymbol, sale.total),
+                  style: pw.TextStyle(
+                    fontSize: fontSize + 2.0,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ],
         if (isInstallmentSale && installmentCount > 0) ...[
-          pw.SizedBox(height: 10),
+          pw.SizedBox(height: sectionGap),
           pw.Text('FINANCIAL SUMMARY', style: sectionStyle),
-          pw.SizedBox(height: 6),
-          pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-            children: [
-              pw.Text('Total Amount', style: textStyle),
-              pw.Text(_money(currencySymbol, sale.total), style: textStyle),
-            ],
+          pw.SizedBox(height: infoRowGap),
+          pw.Padding(
+            padding: pw.EdgeInsets.symmetric(vertical: infoRowGap),
+            child: pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text('Total Amount', style: textStyle),
+                pw.Text(_money(currencySymbol, sale.total), style: textStyle),
+              ],
+            ),
           ),
-          pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-            children: [
-              pw.Text('Down Payment', style: textStyle),
-              pw.Text(_money(currencySymbol, amountPaid), style: textStyle),
-            ],
+          pw.Padding(
+            padding: pw.EdgeInsets.symmetric(vertical: infoRowGap),
+            child: pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text('Down Payment', style: textStyle),
+                pw.Text(_money(currencySymbol, amountPaid), style: textStyle),
+              ],
+            ),
           ),
-          pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-            children: [
-              pw.Text('Remaining Amount', style: textStyle),
-              pw.Text(_money(currencySymbol, balance), style: textStyle),
-            ],
+          pw.Padding(
+            padding: pw.EdgeInsets.symmetric(vertical: infoRowGap),
+            child: pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text('Remaining Amount', style: textStyle),
+                pw.Text(_money(currencySymbol, balance), style: textStyle),
+              ],
+            ),
           ),
-          pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-            children: [
-              pw.Text('Number of Installments', style: textStyle),
-              pw.Text(installmentCount.toString(), style: textStyle),
-            ],
+          pw.Padding(
+            padding: pw.EdgeInsets.symmetric(vertical: infoRowGap),
+            child: pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text('Number of Installments', style: textStyle),
+                pw.Text(installmentCount.toString(), style: textStyle),
+              ],
+            ),
           ),
-          pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-            children: [
-              pw.Text('Monthly Installment', style: textStyle),
-              pw.Text(
-                _money(currencySymbol, monthlyInstallment),
-                style: textStyle,
-              ),
-            ],
+          pw.Padding(
+            padding: pw.EdgeInsets.symmetric(vertical: infoRowGap),
+            child: pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text('Monthly Installment', style: textStyle),
+                pw.Text(
+                  _money(currencySymbol, monthlyInstallment),
+                  style: textStyle,
+                ),
+              ],
+            ),
           ),
-          pw.SizedBox(height: 10),
+          pw.SizedBox(height: sectionGap),
           pw.Text('PAYMENT SCHEDULE', style: sectionStyle),
-          pw.SizedBox(height: 4),
+          pw.SizedBox(height: 2),
           pw.Table(
             border: pw.TableBorder.all(
               color: const PdfColor(0.72, 0.72, 0.72),
@@ -1617,9 +1775,9 @@ class PrintService {
               ),
             ],
           ),
-          pw.SizedBox(height: 10),
+          pw.SizedBox(height: sectionGap),
           pw.Text('IMPORTANT NOTES', style: sectionStyle),
-          pw.SizedBox(height: 4),
+          pw.SizedBox(height: infoRowGap),
           pw.Text(
             '- Please make payments on or before the due date',
             style: smallStyle,
@@ -1630,111 +1788,116 @@ class PrintService {
           ),
           pw.Text('- Keep this receipt for your records', style: smallStyle),
         ] else if (settings.showPaymentDetails) ...[
-          pw.SizedBox(height: 10),
+          pw.SizedBox(height: sectionGap),
           pw.Text(
             'Payment Details',
             style: pw.TextStyle(
-              fontSize: fontSize + 2,
+              fontSize: fontSize + 1,
               fontWeight: pw.FontWeight.bold,
             ),
           ),
-          pw.SizedBox(height: 6),
-          pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-            children: [
-              pw.Text(_pdfSafe(sale.paymentMethod), style: textStyle),
-              pw.Text(
-                _money(
-                  currencySymbol,
-                  sale.paymentMethod.trim().toUpperCase() == 'CREDIT'
-                      ? balance
-                      : amountPaid,
+          pw.SizedBox(height: infoRowGap),
+          pw.Padding(
+            padding: pw.EdgeInsets.symmetric(vertical: infoRowGap),
+            child: pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text(_pdfSafe(sale.paymentMethod), style: textStyle),
+                pw.Text(
+                  _money(
+                    currencySymbol,
+                    sale.paymentMethod.trim().toUpperCase() == 'CREDIT'
+                        ? balance
+                        : amountPaid,
+                  ),
+                  style: textStyle,
                 ),
-                style: textStyle,
-              ),
-            ],
+              ],
+            ),
           ),
-          pw.SizedBox(height: 6),
-          pw.Divider(thickness: 0.8, color: PdfColors.black),
-          pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-            children: [
-              pw.Text('Paid', style: textStyle),
-              pw.Text(_money(currencySymbol, amountPaid), style: textStyle),
-            ],
+          pw.Divider(height: dividerHeight, thickness: 0.5, color: PdfColors.black),
+          pw.Padding(
+            padding: pw.EdgeInsets.symmetric(vertical: infoRowGap),
+            child: pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text('Paid', style: textStyle),
+                pw.Text(_money(currencySymbol, amountPaid), style: textStyle),
+              ],
+            ),
           ),
-          pw.Row(
-            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-            children: [
-              pw.Text(
-                sale.paymentMethod.trim().toUpperCase() == 'COD'
-                    ? 'Due Amount'
-                    : (sale.paymentMethod.trim().toUpperCase() == 'CREDIT' ||
-                              sale.paymentMethod.trim().toUpperCase() ==
-                                  'INSTALLMENT'
-                          ? 'Remaining Due'
-                          : (balance < 0 ? 'Change Due' : 'Balance')),
-                style: textStyle,
-              ),
-              pw.Text(
-                _money(currencySymbol, balance < 0 ? -balance : balance),
-                style: textStyle,
-              ),
-            ],
+          pw.Padding(
+            padding: pw.EdgeInsets.symmetric(vertical: infoRowGap),
+            child: pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text(
+                  sale.paymentMethod.trim().toUpperCase() == 'COD'
+                      ? 'Due Amount'
+                      : (sale.paymentMethod.trim().toUpperCase() == 'CREDIT' ||
+                                sale.paymentMethod.trim().toUpperCase() ==
+                                    'INSTALLMENT'
+                            ? 'Remaining Due'
+                            : (balance < 0 ? 'Change Due' : 'Balance')),
+                  style: textStyle,
+                ),
+                pw.Text(
+                  _money(currencySymbol, balance < 0 ? -balance : balance),
+                  style: textStyle,
+                ),
+              ],
+            ),
           ),
           if (isInstallmentSale && sale.installmentSchedules.isNotEmpty) ...[
-            pw.SizedBox(height: 10),
+            pw.SizedBox(height: sectionGap),
             pw.Text('Installment Schedule', style: sectionStyle),
-            pw.SizedBox(height: 4),
+            pw.SizedBox(height: infoRowGap),
             ...sale.installmentSchedules.map(
-              (schedule) => pw.Text(
-                '#${schedule.installmentNo} ${_formatDateShort(schedule.dueDate)} ${_money(currencySymbol, schedule.scheduledAmount)} paid ${_money(currencySymbol, schedule.paidAmount)} due ${_money(currencySymbol, schedule.remainingAmount)}',
-                style: smallStyle,
+              (schedule) => pw.Padding(
+                padding: pw.EdgeInsets.symmetric(vertical: infoRowGap * 0.5),
+                child: pw.Text(
+                  '#${schedule.installmentNo} ${_formatDateShort(schedule.dueDate)} ${_money(currencySymbol, schedule.scheduledAmount)} paid ${_money(currencySymbol, schedule.paidAmount)} due ${_money(currencySymbol, schedule.remainingAmount)}',
+                  style: smallStyle,
+                ),
               ),
             ),
           ],
         ],
         if (sale.paymentMethod.trim().toUpperCase() == 'COD') ...[
-          pw.SizedBox(height: 10),
+          pw.SizedBox(height: infoRowGap + 1),
           pw.Center(
             child: pw.Text('[  ] PAID      [  ] UNPAID', style: boldStyle),
           ),
-          pw.SizedBox(height: 10),
+          pw.SizedBox(height: infoRowGap + 1),
         ],
         if (customNote.isNotEmpty) ...[
-          pw.SizedBox(height: 10),
+          pw.SizedBox(height: infoRowGap + 1),
           pw.Text('Notes: ${_pdfSafe(customNote)}', style: smallStyle),
         ],
         if (settings.showTerms && (settings.invoiceTerms?.trim().isNotEmpty == true)) ...[
-          pw.SizedBox(height: 8),
-          pw.Divider(thickness: 0.5, color: PdfColors.grey),
+          pw.SizedBox(height: infoRowGap + 1),
+          pw.Divider(height: dividerHeight, thickness: 0.5, color: PdfColors.grey),
           pw.Text(
             'Terms & Conditions:',
             style: pw.TextStyle(fontSize: fontSize - 1, fontWeight: pw.FontWeight.bold),
           ),
-          pw.SizedBox(height: 2),
+          pw.SizedBox(height: infoRowGap),
           pw.Text(_pdfSafe(settings.invoiceTerms?.trim() ?? ''), style: smallStyle),
         ],
         if (settings.showFooter) ...[
-          pw.SizedBox(height: 14),
+          pw.SizedBox(height: sectionGap),
           pw.Center(
             child: pw.Text(
-              _pdfSafe(settings.thankYouMessage),
-              style: textStyle,
-              textAlign: pw.TextAlign.center,
-            ),
-          ),
-          pw.SizedBox(height: 6),
-          pw.Center(
-            child: pw.Text(
-              'Thank you for your purchase!',
+              _pdfSafe(settings.thankYouMessage.trim().isNotEmpty
+                  ? settings.thankYouMessage
+                  : 'Thank you for your purchase!'),
               style: boldStyle,
               textAlign: pw.TextAlign.center,
             ),
           ),
         ],
         if (sale.paymentMethod.trim().toUpperCase() == 'COD') ...[
-          pw.SizedBox(height: 24),
+          pw.SizedBox(height: 12),
           pw.Row(
             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
             children: [
@@ -1742,7 +1905,7 @@ class PrintService {
                 crossAxisAlignment: pw.CrossAxisAlignment.start,
                 children: [
                   pw.Text('.............................', style: smallStyle),
-                  pw.SizedBox(height: 2),
+                  pw.SizedBox(height: 1),
                   pw.Text('Delivery Person', style: boldStyle),
                 ],
               ),
@@ -1750,7 +1913,7 @@ class PrintService {
                 crossAxisAlignment: pw.CrossAxisAlignment.end,
                 children: [
                   pw.Text('.............................', style: smallStyle),
-                  pw.SizedBox(height: 2),
+                  pw.SizedBox(height: 1),
                   pw.Text('Customer Sign', style: boldStyle),
                 ],
               ),
@@ -1758,7 +1921,7 @@ class PrintService {
           ),
         ],
         if (settings.showFooter) ...[
-          pw.SizedBox(height: 10),
+          pw.SizedBox(height: 3),
           pw.Center(
             child: pw.Text(
               _pdfSafe(
@@ -2567,15 +2730,18 @@ class PrintService {
     required String storeAddress,
     required String storePhone,
     required bool is58mm,
+    bool is72mm = false,
   }) {
     final isCod = sale.paymentMethod.toUpperCase() == 'COD';
     final isPaid = sale.status.toUpperCase() == 'COMPLETED';
-    final fontSize = is58mm ? (settings.fontSize - 1).clamp(7.0, 11.0) : settings.fontSize;
-    final textStyle = pw.TextStyle(fontSize: fontSize);
-    final boldStyle = pw.TextStyle(fontSize: fontSize, fontWeight: pw.FontWeight.bold);
-    final smallStyle = pw.TextStyle(fontSize: (fontSize - 2).clamp(6.5, 9.0));
-    final smallBoldStyle = pw.TextStyle(fontSize: (fontSize - 2).clamp(6.5, 9.0), fontWeight: pw.FontWeight.bold);
-    final titleStyle = pw.TextStyle(fontSize: fontSize + 4, fontWeight: pw.FontWeight.bold);
+    final double baseFontSize = is58mm
+        ? 7.5
+        : (is72mm ? 8.2 : 8.8);
+    final textStyle = pw.TextStyle(fontSize: baseFontSize, lineSpacing: 1.05);
+    final boldStyle = pw.TextStyle(fontSize: baseFontSize, fontWeight: pw.FontWeight.bold, lineSpacing: 1.05);
+    final smallStyle = pw.TextStyle(fontSize: (baseFontSize - 1.5).clamp(6.2, 7.5), lineSpacing: 1.05);
+    final smallBoldStyle = pw.TextStyle(fontSize: (baseFontSize - 1.5).clamp(6.2, 7.5), fontWeight: pw.FontWeight.bold, lineSpacing: 1.05);
+    final titleStyle = pw.TextStyle(fontSize: baseFontSize + 3.0, fontWeight: pw.FontWeight.bold);
 
     final createdAtStr = sale.createdAt != null
         ? DateFormat('yyyy-MM-dd HH:mm').format(sale.createdAt!.toLocal())
@@ -2597,38 +2763,37 @@ class PrintService {
         child: pw.Text(_pdfSafe(storeName), style: titleStyle, textAlign: pw.TextAlign.center),
       ),
       if (storeAddress.trim().isNotEmpty) ...[
-        pw.SizedBox(height: 2),
+        pw.SizedBox(height: 1),
         pw.Center(
           child: pw.Text(_pdfSafe(storeAddress), style: smallStyle, textAlign: pw.TextAlign.center),
         ),
       ],
       if (storePhone.trim().isNotEmpty) ...[
-        pw.SizedBox(height: 2),
+        pw.SizedBox(height: 1),
         pw.Center(
           child: pw.Text('Tel: ${_pdfSafe(storePhone)}', style: smallStyle, textAlign: pw.TextAlign.center),
         ),
       ],
-      pw.SizedBox(height: 4),
-      pw.Divider(thickness: 1, borderStyle: pw.BorderStyle.dashed),
+      pw.Divider(height: 4, thickness: 0.8, borderStyle: pw.BorderStyle.dashed),
 
       // Title & COD Badge
       pw.Center(
-        child: pw.Text('DELIVERY NOTE', style: pw.TextStyle(fontSize: fontSize + 3, fontWeight: pw.FontWeight.bold)),
+        child: pw.Text('DELIVERY NOTE', style: pw.TextStyle(fontSize: baseFontSize + 2.5, fontWeight: pw.FontWeight.bold)),
       ),
       if (isCod) ...[
-        pw.SizedBox(height: 3),
+        pw.SizedBox(height: 2),
         pw.Center(
           child: pw.Container(
             padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 2),
             decoration: pw.BoxDecoration(
-              border: pw.Border.all(width: 1),
+              border: pw.Border.all(width: 0.9),
               borderRadius: const pw.BorderRadius.all(pw.Radius.circular(3)),
             ),
-            child: pw.Text('CASH ON DELIVERY (COD)', style: pw.TextStyle(fontSize: fontSize, fontWeight: pw.FontWeight.bold)),
+            child: pw.Text('CASH ON DELIVERY (COD)', style: pw.TextStyle(fontSize: baseFontSize, fontWeight: pw.FontWeight.bold)),
           ),
         ),
       ],
-      pw.SizedBox(height: 4),
+      pw.SizedBox(height: 2),
       pw.Row(
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
@@ -2636,43 +2801,43 @@ class PrintService {
           pw.Text('Inv: ${_pdfSafe(_displayInvoiceNumber(sale))}', style: smallBoldStyle),
         ],
       ),
-      pw.Divider(thickness: 0.8),
+      pw.Divider(height: 3, thickness: 0.6),
 
       // Deliver to box
       pw.Container(
         width: double.infinity,
-        padding: const pw.EdgeInsets.all(5),
+        padding: const pw.EdgeInsets.all(4),
         decoration: pw.BoxDecoration(
           border: pw.Border.all(width: 0.8),
-          borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
+          borderRadius: const pw.BorderRadius.all(pw.Radius.circular(3)),
         ),
         child: pw.Column(
           crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
             pw.Text('DELIVER TO:', style: smallBoldStyle),
-            pw.SizedBox(height: 2),
+            pw.SizedBox(height: 1),
             pw.Text(_pdfSafe(customerName), style: boldStyle),
             if (customerPhone.trim().isNotEmpty)
               pw.Text('Phone: ${_pdfSafe(customerPhone)}', style: textStyle),
             if (deliveryAddress.trim().isNotEmpty)
               pw.Text('Address: ${_pdfSafe(deliveryAddress)}', style: smallStyle),
             if (sale.deliveryPersonName != null && sale.deliveryPersonName!.trim().isNotEmpty) ...[
-              pw.SizedBox(height: 2),
+              pw.SizedBox(height: 1),
               pw.Text('Driver: ${_pdfSafe(sale.deliveryPersonName!)}', style: smallBoldStyle),
             ],
           ],
         ),
       ),
-      pw.SizedBox(height: 6),
+      pw.SizedBox(height: 3),
 
       // Payment Status & Collect Cash Banner
       if (isCod) ...[
         pw.Container(
           width: double.infinity,
-          padding: const pw.EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+          padding: const pw.EdgeInsets.symmetric(horizontal: 5, vertical: 3),
           decoration: pw.BoxDecoration(
-            border: pw.Border.all(width: 1.2),
-            borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
+            border: pw.Border.all(width: 1.0),
+            borderRadius: const pw.BorderRadius.all(pw.Radius.circular(3)),
           ),
           child: pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.center,
@@ -2682,22 +2847,21 @@ class PrintService {
                 style: boldStyle,
               ),
               if (!isPaid) ...[
-                pw.SizedBox(height: 2),
+                pw.SizedBox(height: 1),
                 pw.Text(
                   'COLLECT CASH: ${_pdfSafe(_money(currencySymbol, sale.total))}',
-                  style: pw.TextStyle(fontSize: fontSize + 2, fontWeight: pw.FontWeight.bold),
+                  style: pw.TextStyle(fontSize: baseFontSize + 2.0, fontWeight: pw.FontWeight.bold),
                 ),
               ],
             ],
           ),
         ),
-        pw.SizedBox(height: 6),
+        pw.SizedBox(height: 3),
       ],
 
       // Items section
       pw.Text('ITEMS TO DELIVER:', style: boldStyle),
-      pw.SizedBox(height: 2),
-      pw.Divider(thickness: 0.8),
+      pw.Divider(height: 3, thickness: 0.6),
 
       ...sale.items.asMap().entries.map((entry) {
         final idx = entry.key + 1;
@@ -2706,7 +2870,7 @@ class PrintService {
         final itemImeis = imeisMap[item.productId] ?? [];
 
         return pw.Padding(
-          padding: const pw.EdgeInsets.symmetric(vertical: 3),
+          padding: const pw.EdgeInsets.symmetric(vertical: 1.5),
           child: pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.stretch,
             children: [
@@ -2720,7 +2884,7 @@ class PrintService {
                 ],
               ),
               pw.Padding(
-                padding: const pw.EdgeInsets.only(left: 12),
+                padding: const pw.EdgeInsets.only(left: 10),
                 child: pw.Row(
                   mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                   children: [
@@ -2734,22 +2898,20 @@ class PrintService {
               ),
               if (itemImeis.isNotEmpty)
                 pw.Padding(
-                  padding: const pw.EdgeInsets.only(left: 12, top: 1),
+                  padding: const pw.EdgeInsets.only(left: 10, top: 1),
                   child: pw.Text('IMEI: ${itemImeis.join(", ")}', style: smallBoldStyle),
                 ),
               pw.Padding(
-                padding: const pw.EdgeInsets.only(left: 12, top: 2),
+                padding: const pw.EdgeInsets.only(left: 10, top: 1),
                 child: pw.Text('[  ] Pending    [  ] Received', style: smallBoldStyle),
               ),
-              pw.SizedBox(height: 2),
-              pw.Divider(thickness: 0.5, borderStyle: pw.BorderStyle.dashed),
+              pw.Divider(height: 3, thickness: 0.4, borderStyle: pw.BorderStyle.dashed),
             ],
           ),
         );
       }),
 
       // Financial breakdown
-      pw.SizedBox(height: 2),
       pw.Row(
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
@@ -2781,28 +2943,28 @@ class PrintService {
             pw.Text(_money(currencySymbol, sale.shippingCharges), style: boldStyle),
           ],
         ),
-      pw.Divider(thickness: 1),
+      pw.Divider(height: 3, thickness: 0.8),
       pw.Row(
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
-          pw.Text('TOTAL', style: pw.TextStyle(fontSize: fontSize + 2, fontWeight: pw.FontWeight.bold)),
+          pw.Text('TOTAL', style: pw.TextStyle(fontSize: baseFontSize + 1.5, fontWeight: pw.FontWeight.bold)),
           pw.Text(
             _money(currencySymbol, sale.total),
-            style: pw.TextStyle(fontSize: fontSize + 2, fontWeight: pw.FontWeight.bold),
+            style: pw.TextStyle(fontSize: baseFontSize + 1.5, fontWeight: pw.FontWeight.bold),
           ),
         ],
       ),
-      pw.Divider(thickness: 1),
+      pw.Divider(height: 3, thickness: 0.8),
 
       // Signatures
-      pw.SizedBox(height: 14),
+      pw.SizedBox(height: 8),
       pw.Row(
         mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
         children: [
           pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
-              pw.Text('.............................', style: smallStyle),
+              pw.Text(is58mm ? '.............' : '....................', style: smallStyle),
               pw.SizedBox(height: 1),
               pw.Text('Delivered By', style: smallBoldStyle),
             ],
@@ -2810,18 +2972,18 @@ class PrintService {
           pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.end,
             children: [
-              pw.Text('.............................', style: smallStyle),
+              pw.Text(is58mm ? '.............' : '....................', style: smallStyle),
               pw.SizedBox(height: 1),
               pw.Text('Customer Sign', style: smallBoldStyle),
             ],
           ),
         ],
       ),
-      pw.SizedBox(height: 12),
+      pw.SizedBox(height: 6),
       pw.Center(
         child: pw.Text('Please inspect goods upon delivery', style: smallStyle),
       ),
-      pw.SizedBox(height: 4),
+      pw.SizedBox(height: 2),
       pw.Center(
         child: pw.Text('Powered by StoreBuddy POS', style: smallStyle),
       ),
@@ -2839,8 +3001,12 @@ class PrintService {
   }) async {
     final pdf = pw.Document();
     final effectiveFormat = (formatOverride ?? settings.deliveryNoteFormat).toUpperCase();
-    final isA4 = effectiveFormat == 'A4';
     final is58mm = effectiveFormat == 'THERMAL_58MM';
+    final is72mm = effectiveFormat == 'THERMAL_72MM';
+    final isCustomRoll = effectiveFormat == 'CUSTOM_ROLL';
+    final is80mm = effectiveFormat == 'THERMAL_80MM' || effectiveFormat == 'THERMAL';
+    final isRoll = is58mm || is72mm || is80mm || isCustomRoll;
+    final isSheet = !isRoll; // A4, A5, CUSTOM (cut sheet)
     final isCod = sale.paymentMethod.toUpperCase() == 'COD';
     final isPaid = sale.status.toUpperCase() == 'COMPLETED';
 
@@ -2860,11 +3026,46 @@ class PrintService {
       theme = null;
     }
 
-    if (isA4) {
+    if (isSheet) {
+      final isA5 = effectiveFormat == 'A5';
+      final isCustom = effectiveFormat == 'CUSTOM';
+      final double customWidthMm = (settings.deliveryNoteCustomWidthMm != null && settings.deliveryNoteCustomWidthMm! > 0)
+          ? settings.deliveryNoteCustomWidthMm!
+          : 148.0;
+      final double customHeightMm = (settings.deliveryNoteCustomHeightMm != null && settings.deliveryNoteCustomHeightMm! > 0)
+          ? settings.deliveryNoteCustomHeightMm!
+          : 210.0;
+
+      final PdfPageFormat sheetFormat = isA5
+          ? PdfPageFormat.a5
+          : (isCustom
+              ? PdfPageFormat(customWidthMm * PdfPageFormat.mm, customHeightMm * PdfPageFormat.mm)
+              : PdfPageFormat.a4);
+
+      final bool isCompact = isA5 || (isCustom && customWidthMm < 180);
+      final pw.EdgeInsets sheetMargin = isA5
+          ? const pw.EdgeInsets.all(18)
+          : (isCustom
+              ? pw.EdgeInsets.all(isCompact ? 14 : 24)
+              : const pw.EdgeInsets.all(32));
+
+      final double headerStoreNameSize = isCompact ? 15 : 20;
+      final double headerTitleSize = isCompact ? 16 : 22;
+      final double codBadgeSize = isCompact ? 9 : 11;
+      final double sectionTitleSize = isCompact ? 10 : 12;
+      final double customerNameSize = isCompact ? 10 : 11;
+      final double bodyTextSize = isCompact ? 8 : 9;
+      final double smallTextSize = isCompact ? 7 : 7.5;
+      final double spacingLarge = isCompact ? 10 : 20;
+      final double spacingMedium = isCompact ? 6 : 12;
+      final double sigLineWidth = isCompact ? 90 : 130;
+      final double sigSpacing = isCompact ? 20 : 50;
+      final double tableCellPadding = isCompact ? 3.5 : 5;
+
       pdf.addPage(
         pw.MultiPage(
-          pageFormat: PdfPageFormat.a4,
-          margin: const pw.EdgeInsets.all(32),
+          pageFormat: sheetFormat,
+          margin: sheetMargin,
           theme: theme,
           build: (context) => [
             pw.Header(
@@ -2879,39 +3080,39 @@ class PrintService {
                         pw.Text(
                           _pdfSafe(storeName),
                           style: pw.TextStyle(
-                            fontSize: 20,
+                            fontSize: headerStoreNameSize,
                             fontWeight: pw.FontWeight.bold,
                           ),
                         ),
                         pw.Text(
                           _pdfSafe(storeAddress),
-                          style: const pw.TextStyle(fontSize: 9),
+                          style: pw.TextStyle(fontSize: bodyTextSize),
                         ),
                         pw.Text(
                           'Phone: $storePhone',
-                          style: const pw.TextStyle(fontSize: 9),
+                          style: pw.TextStyle(fontSize: bodyTextSize),
                         ),
                       ],
                     ),
                   ),
-                  pw.SizedBox(width: 20),
+                  pw.SizedBox(width: spacingMedium),
                   pw.Column(
                     crossAxisAlignment: pw.CrossAxisAlignment.end,
                     children: [
                       pw.Text(
                         'DELIVERY NOTE',
                         style: pw.TextStyle(
-                          fontSize: 22,
+                          fontSize: headerTitleSize,
                           fontWeight: pw.FontWeight.bold,
                           color: PdfColors.blueGrey800,
                         ),
                       ),
                       if (isCod) ...[
-                        pw.SizedBox(height: 4),
+                        pw.SizedBox(height: 3),
                         pw.Text(
                           'CASH ON DELIVERY (COD)',
                           style: pw.TextStyle(
-                            fontSize: 11,
+                            fontSize: codBadgeSize,
                             fontWeight: pw.FontWeight.bold,
                             color: PdfColors.red800,
                           ),
@@ -2919,14 +3120,14 @@ class PrintService {
                       ],
                       pw.Text(
                         'Date: ${sale.createdAt != null ? DateFormat('yyyy-MM-dd HH:mm').format(sale.createdAt!.toLocal()) : ''}',
-                        style: const pw.TextStyle(fontSize: 9),
+                        style: pw.TextStyle(fontSize: bodyTextSize),
                       ),
                       pw.Container(
-                        width: 180,
+                        width: isCompact ? 140 : 180,
                         alignment: pw.Alignment.topRight,
                         child: pw.Text(
                           'Invoice #: ${sale.id}',
-                          style: const pw.TextStyle(fontSize: 9),
+                          style: pw.TextStyle(fontSize: bodyTextSize),
                           softWrap: true,
                         ),
                       ),
@@ -2935,7 +3136,7 @@ class PrintService {
                 ],
               ),
             ),
-            pw.SizedBox(height: 20),
+            pw.SizedBox(height: spacingLarge),
             // Delivery details
             pw.Row(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -2948,14 +3149,14 @@ class PrintService {
                         'DELIVER TO:',
                         style: pw.TextStyle(
                           fontWeight: pw.FontWeight.bold,
-                          fontSize: 12,
+                          fontSize: sectionTitleSize,
                         ),
                       ),
-                      pw.SizedBox(height: 4),
+                      pw.SizedBox(height: 3),
                       pw.Text(
                         _pdfSafe(sale.customer?.name ?? 'Walk-in Customer'),
                         style: pw.TextStyle(
-                          fontSize: 11,
+                          fontSize: customerNameSize,
                           fontWeight: pw.FontWeight.bold,
                         ),
                       ),
@@ -2966,7 +3167,7 @@ class PrintService {
                         if (a4Address.trim().isNotEmpty) {
                           return pw.Text(
                             'Address: ${_pdfSafe(a4Address)}',
-                            style: const pw.TextStyle(fontSize: 10),
+                            style: pw.TextStyle(fontSize: bodyTextSize + 0.5),
                           );
                         }
                         return pw.SizedBox();
@@ -2975,7 +3176,7 @@ class PrintService {
                           sale.customer!.phone.isNotEmpty)
                         pw.Text(
                           'Phone: ${sale.customer!.phone}',
-                          style: const pw.TextStyle(fontSize: 10),
+                          style: pw.TextStyle(fontSize: bodyTextSize + 0.5),
                         ),
                       if (sale.deliveryPersonName != null &&
                           sale.deliveryPersonName!.trim().isNotEmpty)
@@ -2983,7 +3184,7 @@ class PrintService {
                           padding: const pw.EdgeInsets.only(top: 2),
                           child: pw.Text(
                             'Driver: ${_pdfSafe(sale.deliveryPersonName!)}',
-                            style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold),
+                            style: pw.TextStyle(fontSize: bodyTextSize + 0.5, fontWeight: pw.FontWeight.bold),
                           ),
                         ),
                     ],
@@ -2991,7 +3192,7 @@ class PrintService {
                 ),
                 if (isCod) ...[
                   pw.Container(
-                    padding: const pw.EdgeInsets.all(8),
+                    padding: pw.EdgeInsets.all(tableCellPadding + 2),
                     decoration: pw.BoxDecoration(
                       border: pw.Border.all(color: PdfColors.grey400, width: 1),
                       borderRadius: const pw.BorderRadius.all(
@@ -3008,20 +3209,20 @@ class PrintService {
                               : 'PAYMENT STATUS: UNPAID',
                           style: pw.TextStyle(
                             fontWeight: pw.FontWeight.bold,
-                            fontSize: 9,
+                            fontSize: bodyTextSize,
                             color: isPaid
                                 ? PdfColors.green800
                                 : PdfColors.orange800,
                           ),
                         ),
-                        pw.SizedBox(height: 4),
+                        pw.SizedBox(height: 3),
                         pw.Text(
                           isPaid
                               ? 'No collection needed.'
                               : 'COLLECT CASH: $currencySymbol ${sale.total.toStringAsFixed(2)}',
                           style: pw.TextStyle(
                             fontWeight: pw.FontWeight.bold,
-                            fontSize: 10,
+                            fontSize: bodyTextSize + 1,
                             color: isPaid ? PdfColors.green900 : PdfColors.red900,
                           ),
                         ),
@@ -3031,17 +3232,26 @@ class PrintService {
                 ],
               ],
             ),
-            pw.SizedBox(height: 20),
+            pw.SizedBox(height: spacingLarge),
             pw.Table(
               border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
-              columnWidths: const {
-                0: pw.FixedColumnWidth(24),
-                1: pw.FlexColumnWidth(3),
-                2: pw.FixedColumnWidth(70),
-                3: pw.FixedColumnWidth(50),
-                4: pw.FixedColumnWidth(70),
-                5: pw.FixedColumnWidth(110),
-              },
+              columnWidths: isCompact
+                  ? const {
+                      0: pw.FixedColumnWidth(20),
+                      1: pw.FlexColumnWidth(3),
+                      2: pw.FixedColumnWidth(55),
+                      3: pw.FixedColumnWidth(35),
+                      4: pw.FixedColumnWidth(55),
+                      5: pw.FixedColumnWidth(80),
+                    }
+                  : const {
+                      0: pw.FixedColumnWidth(24),
+                      1: pw.FlexColumnWidth(3),
+                      2: pw.FixedColumnWidth(70),
+                      3: pw.FixedColumnWidth(50),
+                      4: pw.FixedColumnWidth(70),
+                      5: pw.FixedColumnWidth(110),
+                    },
               children: [
                 pw.TableRow(
                   decoration: const pw.BoxDecoration(
@@ -3049,65 +3259,71 @@ class PrintService {
                   ),
                   children: [
                     pw.Padding(
-                      padding: const pw.EdgeInsets.all(6),
+                      padding: pw.EdgeInsets.all(tableCellPadding + 1),
                       child: pw.Text(
                         '#',
                         style: pw.TextStyle(
                           fontWeight: pw.FontWeight.bold,
                           color: PdfColors.white,
+                          fontSize: bodyTextSize,
                         ),
                       ),
                     ),
                     pw.Padding(
-                      padding: const pw.EdgeInsets.all(6),
+                      padding: pw.EdgeInsets.all(tableCellPadding + 1),
                       child: pw.Text(
                         'ITEM NAME',
                         style: pw.TextStyle(
                           fontWeight: pw.FontWeight.bold,
                           color: PdfColors.white,
+                          fontSize: bodyTextSize,
                         ),
                       ),
                     ),
                     pw.Padding(
-                      padding: const pw.EdgeInsets.all(6),
+                      padding: pw.EdgeInsets.all(tableCellPadding + 1),
                       child: pw.Text(
                         'PRICE',
                         style: pw.TextStyle(
                           fontWeight: pw.FontWeight.bold,
                           color: PdfColors.white,
+                          fontSize: bodyTextSize,
                         ),
                         textAlign: pw.TextAlign.right,
                       ),
                     ),
                     pw.Padding(
-                      padding: const pw.EdgeInsets.all(6),
+                      padding: pw.EdgeInsets.all(tableCellPadding + 1),
                       child: pw.Text(
                         'QTY',
                         style: pw.TextStyle(
                           fontWeight: pw.FontWeight.bold,
                           color: PdfColors.white,
+                          fontSize: bodyTextSize,
                         ),
                         textAlign: pw.TextAlign.center,
                       ),
                     ),
                     pw.Padding(
-                      padding: const pw.EdgeInsets.all(6),
+                      padding: pw.EdgeInsets.all(tableCellPadding + 1),
                       child: pw.Text(
                         'AMOUNT',
                         style: pw.TextStyle(
                           fontWeight: pw.FontWeight.bold,
                           color: PdfColors.white,
+                          fontSize: bodyTextSize,
                         ),
                         textAlign: pw.TextAlign.right,
                       ),
                     ),
                     pw.Padding(
-                      padding: const pw.EdgeInsets.all(6),
+                      padding: pw.EdgeInsets.all(tableCellPadding + 1),
                       child: pw.Text(
                         'STATUS',
                         style: pw.TextStyle(
                           fontWeight: pw.FontWeight.bold,
                           color: PdfColors.white,
+                          fontSize: bodyTextSize,
                         ),
                       ),
                     ),
@@ -3122,20 +3338,20 @@ class PrintService {
                   return pw.TableRow(
                     children: [
                       pw.Padding(
-                        padding: const pw.EdgeInsets.all(5),
+                        padding: pw.EdgeInsets.all(tableCellPadding),
                         child: pw.Text(
                           '${index + 1}',
-                          style: const pw.TextStyle(fontSize: 9),
+                          style: pw.TextStyle(fontSize: bodyTextSize),
                         ),
                       ),
                       pw.Padding(
-                        padding: const pw.EdgeInsets.all(5),
+                        padding: pw.EdgeInsets.all(tableCellPadding),
                         child: pw.Column(
                           crossAxisAlignment: pw.CrossAxisAlignment.start,
                           children: [
                             pw.Text(
                               _pdfSafe(item.productName),
-                              style: const pw.TextStyle(fontSize: 9),
+                              style: pw.TextStyle(fontSize: bodyTextSize),
                             ),
                             if (itemImeis.isNotEmpty)
                               pw.Padding(
@@ -3143,7 +3359,7 @@ class PrintService {
                                 child: pw.Text(
                                   'IMEI: ${itemImeis.join(", ")}',
                                   style: pw.TextStyle(
-                                    fontSize: 7.5,
+                                    fontSize: smallTextSize,
                                     fontWeight: pw.FontWeight.bold,
                                     color: PdfColors.grey700,
                                   ),
@@ -3153,34 +3369,34 @@ class PrintService {
                         ),
                       ),
                       pw.Padding(
-                        padding: const pw.EdgeInsets.all(5),
+                        padding: pw.EdgeInsets.all(tableCellPadding),
                         child: pw.Text(
                           '$currencySymbol ${item.unitPrice.toStringAsFixed(2)}',
-                          style: const pw.TextStyle(fontSize: 9),
+                          style: pw.TextStyle(fontSize: bodyTextSize),
                           textAlign: pw.TextAlign.right,
                         ),
                       ),
                       pw.Padding(
-                        padding: const pw.EdgeInsets.all(5),
+                        padding: pw.EdgeInsets.all(tableCellPadding),
                         child: pw.Text(
                           '${item.quantity.toInt()}',
-                          style: const pw.TextStyle(fontSize: 9),
+                          style: pw.TextStyle(fontSize: bodyTextSize),
                           textAlign: pw.TextAlign.center,
                         ),
                       ),
                       pw.Padding(
-                        padding: const pw.EdgeInsets.all(5),
+                        padding: pw.EdgeInsets.all(tableCellPadding),
                         child: pw.Text(
                           '$currencySymbol ${item.total.toStringAsFixed(2)}',
-                          style: const pw.TextStyle(fontSize: 9),
+                          style: pw.TextStyle(fontSize: bodyTextSize),
                           textAlign: pw.TextAlign.right,
                         ),
                       ),
                       pw.Padding(
-                        padding: const pw.EdgeInsets.all(5),
+                        padding: pw.EdgeInsets.all(tableCellPadding),
                         child: pw.Text(
-                          '[  ] Pending   [  ] Received',
-                          style: const pw.TextStyle(fontSize: 8),
+                          '[  ] Pending   [  ] Recv',
+                          style: pw.TextStyle(fontSize: smallTextSize),
                         ),
                       ),
                     ],
@@ -3190,40 +3406,40 @@ class PrintService {
                   pw.TableRow(
                     children: [
                       pw.Padding(
-                        padding: const pw.EdgeInsets.all(5),
+                        padding: pw.EdgeInsets.all(tableCellPadding),
                         child: pw.SizedBox(),
                       ),
                       pw.Padding(
-                        padding: const pw.EdgeInsets.all(5),
+                        padding: pw.EdgeInsets.all(tableCellPadding),
                         child: pw.Text(
                           'Delivery Fee',
                           style: pw.TextStyle(
                             fontWeight: pw.FontWeight.bold,
-                            fontSize: 10,
+                            fontSize: bodyTextSize + 0.5,
                           ),
                         ),
                       ),
                       pw.Padding(
-                        padding: const pw.EdgeInsets.all(5),
+                        padding: pw.EdgeInsets.all(tableCellPadding),
                         child: pw.SizedBox(),
                       ),
                       pw.Padding(
-                        padding: const pw.EdgeInsets.all(5),
+                        padding: pw.EdgeInsets.all(tableCellPadding),
                         child: pw.SizedBox(),
                       ),
                       pw.Padding(
-                        padding: const pw.EdgeInsets.all(5),
+                        padding: pw.EdgeInsets.all(tableCellPadding),
                         child: pw.Text(
                           '$currencySymbol ${sale.shippingCharges.toStringAsFixed(2)}',
                           style: pw.TextStyle(
                             fontWeight: pw.FontWeight.bold,
-                            fontSize: 10,
+                            fontSize: bodyTextSize + 0.5,
                           ),
                           textAlign: pw.TextAlign.right,
                         ),
                       ),
                       pw.Padding(
-                        padding: const pw.EdgeInsets.all(5),
+                        padding: pw.EdgeInsets.all(tableCellPadding),
                         child: pw.SizedBox(),
                       ),
                     ],
@@ -3232,47 +3448,47 @@ class PrintService {
                 pw.TableRow(
                   children: [
                     pw.Padding(
-                      padding: const pw.EdgeInsets.all(5),
+                      padding: pw.EdgeInsets.all(tableCellPadding),
                       child: pw.SizedBox(),
                     ),
                     pw.Padding(
-                      padding: const pw.EdgeInsets.all(5),
+                      padding: pw.EdgeInsets.all(tableCellPadding),
                       child: pw.Text(
                         'Total',
                         style: pw.TextStyle(
                           fontWeight: pw.FontWeight.bold,
-                          fontSize: 10,
+                          fontSize: bodyTextSize + 0.5,
                         ),
                       ),
                     ),
                     pw.Padding(
-                      padding: const pw.EdgeInsets.all(5),
+                      padding: pw.EdgeInsets.all(tableCellPadding),
                       child: pw.SizedBox(),
                     ),
                     pw.Padding(
-                      padding: const pw.EdgeInsets.all(5),
+                      padding: pw.EdgeInsets.all(tableCellPadding),
                       child: pw.SizedBox(),
                     ),
                     pw.Padding(
-                      padding: const pw.EdgeInsets.all(5),
+                      padding: pw.EdgeInsets.all(tableCellPadding),
                       child: pw.Text(
                         '$currencySymbol ${sale.total.toStringAsFixed(2)}',
                         style: pw.TextStyle(
                           fontWeight: pw.FontWeight.bold,
-                          fontSize: 10,
+                          fontSize: bodyTextSize + 0.5,
                         ),
                         textAlign: pw.TextAlign.right,
                       ),
                     ),
                     pw.Padding(
-                      padding: const pw.EdgeInsets.all(5),
+                      padding: pw.EdgeInsets.all(tableCellPadding),
                       child: pw.SizedBox(),
                     ),
                   ],
                 ),
               ],
             ),
-            pw.SizedBox(height: 50),
+            pw.SizedBox(height: sigSpacing),
             // Signatures
             pw.Row(
               mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
@@ -3282,7 +3498,7 @@ class PrintService {
                         crossAxisAlignment: pw.CrossAxisAlignment.start,
                         children: [
                           pw.Container(
-                            width: 130,
+                            width: sigLineWidth,
                             decoration: const pw.BoxDecoration(
                               border: pw.Border(
                                 top: pw.BorderSide(
@@ -3292,10 +3508,10 @@ class PrintService {
                               ),
                             ),
                           ),
-                          pw.SizedBox(height: 4),
+                          pw.SizedBox(height: 3),
                           pw.Text(
                             'Prepared By',
-                            style: const pw.TextStyle(fontSize: 10),
+                            style: pw.TextStyle(fontSize: bodyTextSize),
                           ),
                         ],
                       ),
@@ -3303,7 +3519,7 @@ class PrintService {
                         crossAxisAlignment: pw.CrossAxisAlignment.start,
                         children: [
                           pw.Container(
-                            width: 130,
+                            width: sigLineWidth,
                             decoration: const pw.BoxDecoration(
                               border: pw.Border(
                                 top: pw.BorderSide(
@@ -3313,10 +3529,10 @@ class PrintService {
                               ),
                             ),
                           ),
-                          pw.SizedBox(height: 4),
+                          pw.SizedBox(height: 3),
                           pw.Text(
                             'Delivered By',
-                            style: const pw.TextStyle(fontSize: 10),
+                            style: pw.TextStyle(fontSize: bodyTextSize),
                           ),
                         ],
                       ),
@@ -3324,7 +3540,7 @@ class PrintService {
                         crossAxisAlignment: pw.CrossAxisAlignment.start,
                         children: [
                           pw.Container(
-                            width: 130,
+                            width: sigLineWidth,
                             decoration: const pw.BoxDecoration(
                               border: pw.Border(
                                 top: pw.BorderSide(
@@ -3334,10 +3550,10 @@ class PrintService {
                               ),
                             ),
                           ),
-                          pw.SizedBox(height: 4),
+                          pw.SizedBox(height: 3),
                           pw.Text(
                             'Customer Signature',
-                            style: const pw.TextStyle(fontSize: 10),
+                            style: pw.TextStyle(fontSize: bodyTextSize),
                           ),
                         ],
                       ),
@@ -3347,7 +3563,7 @@ class PrintService {
                         crossAxisAlignment: pw.CrossAxisAlignment.start,
                         children: [
                           pw.Container(
-                            width: 150,
+                            width: sigLineWidth * 1.1,
                             decoration: const pw.BoxDecoration(
                               border: pw.Border(
                                 top: pw.BorderSide(
@@ -3357,10 +3573,10 @@ class PrintService {
                               ),
                             ),
                           ),
-                          pw.SizedBox(height: 4),
+                          pw.SizedBox(height: 3),
                           pw.Text(
                             'Prepared By',
-                            style: const pw.TextStyle(fontSize: 10),
+                            style: pw.TextStyle(fontSize: bodyTextSize),
                           ),
                         ],
                       ),
@@ -3368,7 +3584,7 @@ class PrintService {
                         crossAxisAlignment: pw.CrossAxisAlignment.start,
                         children: [
                           pw.Container(
-                            width: 150,
+                            width: sigLineWidth * 1.1,
                             decoration: const pw.BoxDecoration(
                               border: pw.Border(
                                 top: pw.BorderSide(
@@ -3378,10 +3594,10 @@ class PrintService {
                               ),
                             ),
                           ),
-                          pw.SizedBox(height: 4),
+                          pw.SizedBox(height: 3),
                           pw.Text(
                             'Customer Signature',
-                            style: const pw.TextStyle(fontSize: 10),
+                            style: pw.TextStyle(fontSize: bodyTextSize),
                           ),
                         ],
                       ),
@@ -3391,13 +3607,29 @@ class PrintService {
         ),
       );
     } else {
-      // Thermal continuous roll (80mm or 58mm)
-      final rollWidth = is58mm ? 58 * PdfPageFormat.mm : 80 * PdfPageFormat.mm;
-      final pageMargin = is58mm ? 2 * PdfPageFormat.mm : 3 * PdfPageFormat.mm;
+      // Thermal continuous roll (80mm, 72mm, 58mm, or Custom Roll)
+      final double rollWidthMm;
+      final double marginMm;
+      if (is58mm) {
+        rollWidthMm = 58.0;
+        marginMm = 2.0;
+      } else if (is72mm) {
+        rollWidthMm = 72.0;
+        marginMm = 2.5;
+      } else if (isCustomRoll) {
+        rollWidthMm = (settings.deliveryNoteCustomWidthMm != null && settings.deliveryNoteCustomWidthMm! > 0)
+            ? settings.deliveryNoteCustomWidthMm!
+            : 72.0;
+        marginMm = 2.5;
+      } else {
+        rollWidthMm = 80.0;
+        marginMm = 3.0;
+      }
+
       final paperFormat = PdfPageFormat(
-        rollWidth,
+        rollWidthMm * PdfPageFormat.mm,
         double.infinity,
-        marginAll: pageMargin,
+        marginAll: marginMm * PdfPageFormat.mm,
       );
 
       pdf.addPage(
@@ -3414,6 +3646,7 @@ class PrintService {
               storeAddress: storeAddress,
               storePhone: storePhone,
               is58mm: is58mm,
+              is72mm: is72mm || (isCustomRoll && rollWidthMm <= 75.0),
             ),
           ),
         ),
@@ -3433,7 +3666,7 @@ class PrintService {
     String? formatOverride,
     String? printerNameOverride,
   }) async {
-    final effectiveFormat = formatOverride ?? settings.deliveryNoteFormat;
+    final effectiveFormat = (formatOverride ?? settings.deliveryNoteFormat).toUpperCase();
     final pdfBytes = await generateDeliveryNotePdf(
       sale: sale,
       settings: settings,
@@ -3446,29 +3679,87 @@ class PrintService {
 
     final targetPrinterName = printerNameOverride ?? settings.deliveryNotePrinterName ?? settings.printerName;
 
+    final bool isA4Delivery = effectiveFormat == 'A4' || effectiveFormat == 'A5';
+    final PdfPageFormat paperFormat;
+    if (effectiveFormat == 'A4') {
+      paperFormat = PdfPageFormat.a4;
+    } else if (effectiveFormat == 'A5') {
+      paperFormat = PdfPageFormat.a5;
+    } else if (effectiveFormat == 'CUSTOM') {
+      final w = (settings.deliveryNoteCustomWidthMm ?? 148.0) * PdfPageFormat.mm;
+      final h = (settings.deliveryNoteCustomHeightMm ?? 210.0) * PdfPageFormat.mm;
+      paperFormat = PdfPageFormat(w, h);
+    } else if (effectiveFormat == 'THERMAL_58MM') {
+      paperFormat = PdfPageFormat(58 * PdfPageFormat.mm, 2000.0 * PdfPageFormat.mm, marginAll: 2 * PdfPageFormat.mm);
+    } else if (effectiveFormat == 'THERMAL_72MM') {
+      paperFormat = PdfPageFormat(72 * PdfPageFormat.mm, 2000.0 * PdfPageFormat.mm, marginAll: 2.5 * PdfPageFormat.mm);
+    } else if (effectiveFormat == 'CUSTOM_ROLL') {
+      final w = (settings.deliveryNoteCustomWidthMm ?? 72.0) * PdfPageFormat.mm;
+      paperFormat = PdfPageFormat(w, 2000.0 * PdfPageFormat.mm, marginAll: 2.5 * PdfPageFormat.mm);
+    } else {
+      paperFormat = PdfPageFormat(80 * PdfPageFormat.mm, 2000.0 * PdfPageFormat.mm, marginAll: 3 * PdfPageFormat.mm);
+    }
+
     if (targetPrinterName != null && targetPrinterName.trim().isNotEmpty && targetPrinterName != '__FIRST_PRINTER__') {
       try {
         final printers = await Printing.listPrinters();
-        final target = printers.firstWhere(
-          (p) =>
-              p.name.toLowerCase().contains(targetPrinterName.toLowerCase()) ||
-              p.url.toLowerCase().contains(targetPrinterName.toLowerCase()),
-          orElse: () => const Printer(url: '', name: ''),
-        );
-        if (target.url.isNotEmpty || target.name.isNotEmpty) {
-          await Printing.directPrintPdf(
-            printer: target,
-            onLayout: (_) async => pdfBytes,
-            name: 'DeliveryNote_${sale.id}',
-          );
-          return;
+        final searchName = targetPrinterName.trim().toLowerCase();
+        Printer? target;
+        for (final p in printers) {
+          if (p.name.trim().toLowerCase() == searchName) {
+            target = p;
+            break;
+          }
         }
-      } catch (_) {}
+        if (target == null) {
+          for (final p in printers) {
+            if (p.name.toLowerCase().contains(searchName) ||
+                p.url.toLowerCase().contains(searchName)) {
+              target = p;
+              break;
+            }
+          }
+        }
+        if (target != null && (target.url.isNotEmpty || target.name.isNotEmpty)) {
+          bool printed = false;
+          for (int attempt = 1; attempt <= 3; attempt++) {
+            try {
+              final ok = await Printing.directPrintPdf(
+                printer: target,
+                onLayout: (_) async => pdfBytes,
+                name: 'DeliveryNote_${sale.id}',
+                format: paperFormat,
+                usePrinterSettings: !isA4Delivery,
+              );
+              if (ok) {
+                printed = true;
+                debugPrint('Delivery note directPrintPdf succeeded on attempt $attempt to ${target.name}');
+                break;
+              } else {
+                debugPrint('Delivery note directPrintPdf returned false on attempt $attempt');
+                if (attempt < 3) {
+                  await Future.delayed(const Duration(milliseconds: 800));
+                }
+              }
+            } catch (err) {
+              debugPrint('Delivery note directPrintPdf attempt $attempt failed: $err');
+              if (attempt < 3) {
+                await Future.delayed(const Duration(milliseconds: 800));
+              }
+            }
+          }
+          if (printed) return;
+          debugPrint('Delivery note direct print to ${target.name} did not succeed after 3 attempts. Falling back to layoutPdf.');
+        }
+      } catch (e) {
+        debugPrint('Delivery note printer resolution failed: $e');
+      }
     }
 
     await Printing.layoutPdf(
       onLayout: (format) async => pdfBytes,
       name: 'DeliveryNote_${sale.id}',
+      format: paperFormat,
     );
   }
 }

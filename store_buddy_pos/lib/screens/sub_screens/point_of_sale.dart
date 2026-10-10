@@ -5130,20 +5130,30 @@ extension _point_of_saleExt on _DashboardScreenState {
                                 }
                                 // ──────────────────────────────────────────
 
-                                 // Trigger Cash Drawer kick immediately if enabled
-                                 unawaited(_maybeOpenCashDrawer(paymentMethod: paymentMethod));
+                                  // 1. Print receipt immediately - primary customer document
+                                  String? printWarning;
+                                  try {
+                                    await _printReceipt(
+                                      sale: sale,
+                                      lines: cartItems,
+                                    );
+                                  } catch (e) {
+                                    debugPrint('Receipt print error: $e');
+                                    printWarning =
+                                        'Sale saved, but receipt printing failed: $e';
+                                  }
 
-                                 // Print receipt immediately with zero delay
-                                 String? printWarning;
-                                 try {
-                                   await _printReceipt(
-                                     sale: sale,
-                                     lines: cartItems,
-                                   );
-                                 } catch (e) {
-                                   printWarning =
-                                       'Sale saved, but receipt printing failed: $e';
-                                 }
+                                  // 2. Trigger Cash Drawer kick AFTER receipt job is safely dispatched to spooler
+                                  // This completely eliminates USB port lock collisions between raw drawer pulse & receipt!
+                                  if (_localCashDrawerEnabled && (paymentMethod.toUpperCase().contains('CASH') || paymentMethod == 'COD')) {
+                                    try {
+                                      // Wait 700ms so Windows Spooler has queued the receipt job
+                                      await Future.delayed(const Duration(milliseconds: 700));
+                                      await _maybeOpenCashDrawer(paymentMethod: paymentMethod);
+                                    } catch (cdErr) {
+                                      debugPrint('Cash drawer kick error: $cdErr');
+                                    }
+                                  }
 
                                  // Sync queue update runs asynchronously in background so
                                  // receipt printing and checkout UI are never blocked by cloud HTTP latency
@@ -5160,13 +5170,19 @@ extension _point_of_saleExt on _DashboardScreenState {
                                    }
                                  }());
 
-                                if (paymentMethod == 'COD' ||
-                                    sale.shippingAddress.isNotEmpty ||
-                                    _localPromptDeliveryLabel) {
-                                  try {
-                                    await _printDeliveryNote(sale);
-                                  } catch (_) {}
-                                }
+                                 final bool isDeliveryOrder = paymentMethod == 'COD' ||
+                                     sale.shippingAddress.trim().isNotEmpty ||
+                                     (sale.customerAddress.trim().isNotEmpty && sale.customerName != 'Walk-in Customer');
+
+                                 if (isDeliveryOrder) {
+                                   // Give Windows Spooler 500ms between jobs so USB port is ready
+                                   await Future.delayed(const Duration(milliseconds: 1000));
+                                    try {
+                                      await _printDeliveryNote(sale, prompt: _localPromptDeliveryLabel);
+                                   } catch (dnErr) {
+                                     debugPrint('Delivery note print error: $dnErr');
+                                   }
+                                 }
 
                                 if (paymentMethod == 'COD' && _enableWhatsappCodNotifications) {
                                   final customerPhone = sale.customerPhone.isNotEmpty
@@ -5200,21 +5216,60 @@ extension _point_of_saleExt on _DashboardScreenState {
                                 }
 
                                 if (!mounted || !context.mounted) return;
-                                try {
-                                  ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-                                    SnackBar(
-                                      content: Text(
-                                        printWarning ??
-                                            syncWarning ??
-                                            (installmentPlan != null
-                                                ? 'Installment plan created for ${sale.id}'
-                                                : isCreditSale
-                                                ? 'Credit sale recorded: ${sale.id}'
-                                                : 'Sale completed: ${sale.id}'),
-                                      ),
-                                    ),
-                                  );
-                                } catch (_) {}
+                                 try {
+                                   final sm = ScaffoldMessenger.maybeOf(context);
+                                   sm?.clearSnackBars();
+
+                                   final invoiceNo = sale.invoiceNumber.isNotEmpty ? sale.invoiceNumber : sale.id;
+                                   final displayMsg = printWarning ??
+                                       syncWarning ??
+                                       (installmentPlan != null
+                                           ? 'Installment plan created ($invoiceNo)'
+                                           : isCreditSale
+                                           ? 'Credit sale recorded ($invoiceNo)'
+                                           : 'Sale completed successfully! ($invoiceNo)');
+
+                                   sm?.showSnackBar(
+                                     SnackBar(
+                                       behavior: SnackBarBehavior.floating,
+                                       elevation: 6,
+                                       shape: RoundedRectangleBorder(
+                                         borderRadius: BorderRadius.circular(12),
+                                       ),
+                                       backgroundColor: printWarning != null
+                                           ? const Color(0xFFE11D48)
+                                           : const Color(0xFF10B981),
+                                       duration: Duration(
+                                         milliseconds: printWarning != null ? 4000 : 2500,
+                                       ),
+                                       showCloseIcon: true,
+                                       closeIconColor: Colors.white,
+                                       content: Row(
+                                         children: [
+                                           Icon(
+                                             printWarning != null
+                                                 ? Icons.warning_amber_rounded
+                                                 : Icons.check_circle_rounded,
+                                             color: Colors.white,
+                                             size: 20,
+                                           ),
+                                           const SizedBox(width: 10),
+                                           Expanded(
+                                             child: Text(
+                                               displayMsg,
+                                               style: const TextStyle(
+                                                 color: Colors.white,
+                                                 fontWeight: FontWeight.w600,
+                                                 fontSize: 13.5,
+                                               ),
+                                               overflow: TextOverflow.ellipsis,
+                                             ),
+                                           ),
+                                         ],
+                                       ),
+                                     ),
+                                   );
+                                 } catch (_) {}
                               },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.transparent,

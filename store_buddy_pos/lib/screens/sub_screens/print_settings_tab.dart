@@ -36,6 +36,10 @@ class _PrintSettingsContentState extends State<PrintSettingsContent> {
   String _deliveryNoteFormat = 'THERMAL_80MM';
   final TextEditingController _deliveryNotePrinterController =
       TextEditingController();
+  final TextEditingController _deliveryNoteCustomWidthController =
+      TextEditingController(text: '148.0');
+  final TextEditingController _deliveryNoteCustomHeightController =
+      TextEditingController(text: '210.0');
 
   // 2. Device-Local Cash Drawer Configuration (ESC/POS)
   bool _cashDrawerEnabled = true;
@@ -77,8 +81,8 @@ class _PrintSettingsContentState extends State<PrintSettingsContent> {
   bool _showLogo = true;
   bool _showBarcode = false;
   bool _showQr = true;
-  double _fontSize = 10;
-  double _lineSpacing = 1.2;
+  double _fontSize = 8.5;
+  double _lineSpacing = 1.05;
 
   List<Printer> _availablePrinters = [];
   bool _scanningPrinters = false;
@@ -122,8 +126,10 @@ class _PrintSettingsContentState extends State<PrintSettingsContent> {
       _marginHMmController.text = marginH.toString();
       _autoPrint = prefs.getBool('local_printer_auto_print') ?? false;
       _promptDeliveryLabel = prefs.getBool('local_printer_prompt_delivery_label') ?? false;
-      _deliveryNoteFormat = prefs.getString('local_printer_delivery_note_format') ?? 'THERMAL_80MM';
+       _deliveryNoteFormat = prefs.getString('local_printer_delivery_note_format') ?? 'THERMAL_80MM';
       _deliveryNotePrinterController.text = prefs.getString('local_printer_delivery_note_printer_name') ?? '';
+      _deliveryNoteCustomWidthController.text = (prefs.getDouble('local_printer_delivery_note_custom_width_mm') ?? 72.0).toString();
+      _deliveryNoteCustomHeightController.text = (prefs.getDouble('local_printer_delivery_note_custom_height_mm') ?? 210.0).toString();
 
       // 2. Device-Local Cash Drawer
       _cashDrawerEnabled = prefs.getBool('local_cash_drawer_enabled') ?? true;
@@ -165,12 +171,14 @@ class _PrintSettingsContentState extends State<PrintSettingsContent> {
         _showLogo = existing.showLogo;
         _showBarcode = existing.showBarcode;
         _showQr = existing.showQr;
-        _fontSize = existing.fontSize;
-        _lineSpacing = existing.lineSpacing;
+        _fontSize = prefs.getDouble('bill_font_size') ?? ((existing.fontSize <= 0 || existing.fontSize == 10) ? 8.5 : existing.fontSize);
+        _lineSpacing = prefs.getDouble('bill_line_spacing') ?? ((existing.lineSpacing == 1.2) ? 1.05 : existing.lineSpacing);
         _thankYouController.text = existing.thankYouMessage;
         _returnPolicyController.text = existing.returnPolicy ?? '';
         _socialLinksController.text = existing.socialLinks ?? '';
       } else {
+        _fontSize = prefs.getDouble('bill_font_size') ?? 8.5;
+        _lineSpacing = prefs.getDouble('bill_line_spacing') ?? 1.05;
         _thankYouController.text = 'Thank you for your business!';
       }
     } catch (e, st) {
@@ -208,6 +216,12 @@ class _PrintSettingsContentState extends State<PrintSettingsContent> {
       await prefs.setBool('local_printer_auto_print', _autoPrint);
       await prefs.setBool('local_printer_prompt_delivery_label', _promptDeliveryLabel);
       await prefs.setString('local_printer_delivery_note_format', _deliveryNoteFormat);
+      final dnCustomW = double.tryParse(_deliveryNoteCustomWidthController.text.trim()) ?? 72.0;
+      final dnCustomH = double.tryParse(_deliveryNoteCustomHeightController.text.trim()) ?? 210.0;
+      await prefs.setDouble('local_printer_delivery_note_custom_width_mm', dnCustomW);
+      await prefs.setDouble('local_printer_delivery_note_custom_height_mm', dnCustomH);
+      await prefs.setDouble('bill_font_size', _fontSize);
+      await prefs.setDouble('bill_line_spacing', _lineSpacing);
       final deliveryNotePrinter = _deliveryNotePrinterController.text.trim();
       if (deliveryNotePrinter.isNotEmpty) {
         await prefs.setString('local_printer_delivery_note_printer_name', deliveryNotePrinter);
@@ -544,6 +558,8 @@ class _PrintSettingsContentState extends State<PrintSettingsContent> {
       receiptLanguage: 'en',
       deliveryNoteFormat: _deliveryNoteFormat,
       deliveryNotePrinterName: deliveryPrinter.isNotEmpty ? deliveryPrinter : null,
+      deliveryNoteCustomWidthMm: double.tryParse(_deliveryNoteCustomWidthController.text.trim()) ?? 72.0,
+      deliveryNoteCustomHeightMm: double.tryParse(_deliveryNoteCustomHeightController.text.trim()) ?? 210.0,
     );
 
     try {
@@ -1309,6 +1325,25 @@ class _PrintSettingsContentState extends State<PrintSettingsContent> {
             subtitle: 'Choose which elements appear on receipts given to customers.',
             icon: Icons.receipt_long_rounded,
             iconColor: const Color(0xFFF59E0B),
+            action: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: _showPreview,
+                  icon: const Icon(Icons.preview_outlined, size: 16),
+                  label: const Text('Preview Bill'),
+                ),
+                const SizedBox(width: 8),
+                FilledButton.icon(
+                  onPressed: _testPrintSlip,
+                  icon: const Icon(Icons.print_rounded, size: 16),
+                  label: const Text('Test Print Bill'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF4F46E5),
+                  ),
+                ),
+              ],
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1334,6 +1369,96 @@ class _PrintSettingsContentState extends State<PrintSettingsContent> {
                   ],
                 ),
                 const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.format_size_rounded, size: 18, color: Theme.of(context).primaryColor),
+                          const SizedBox(width: 8),
+                          const Text(
+                            'Receipt Compactness & Row Gap Density (Shorten Bill Length)',
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    const Text('Font Size (Bill Compactness)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                                    Text(
+                                      '${_fontSize.toStringAsFixed(1)} pt (${_fontSize <= 8.5 ? "Compact POS" : (_fontSize <= 9.5 ? "Medium" : "Large")})',
+                                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Theme.of(context).primaryColor),
+                                    ),
+                                  ],
+                                ),
+                                Slider(
+                                  value: _fontSize.clamp(7.0, 11.0),
+                                  min: 7.0,
+                                  max: 11.0,
+                                  divisions: 8,
+                                  label: '${_fontSize.toStringAsFixed(1)} pt',
+                                  onChanged: (val) => setState(() => _fontSize = val),
+                                  onChangeEnd: (val) async {
+                                    final prefs = await SharedPreferences.getInstance();
+                                    await prefs.setDouble('bill_font_size', val);
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 20),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    const Text('Row Spacing / Gap Density', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                                    Text(
+                                      '${_lineSpacing.toStringAsFixed(2)} (${_lineSpacing <= 0.85 ? "Zero Gap / Ultra Tight" : (_lineSpacing <= 1.05 ? "Compact POS" : (_lineSpacing <= 1.35 ? "Normal Standard" : (_lineSpacing <= 1.65 ? "Relaxed Spacing" : "Spacious Wide")))})',
+                                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Theme.of(context).primaryColor),
+                                    ),
+                                  ],
+                                ),
+                                Slider(
+                                  value: _lineSpacing.clamp(0.8, 2.0),
+                                  min: 0.8,
+                                  max: 2.0,
+                                  divisions: 24,
+                                  label: _lineSpacing.toStringAsFixed(2),
+                                  onChanged: (val) => setState(() => _lineSpacing = val),
+                                  onChangeEnd: (val) async {
+                                    final prefs = await SharedPreferences.getInstance();
+                                    await prefs.setDouble('bill_line_spacing', val);
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
                 Row(
                   children: [
                     Expanded(
@@ -1529,7 +1654,9 @@ class _PrintSettingsContentState extends State<PrintSettingsContent> {
                   children: [
                     Expanded(
                       child: DropdownButtonFormField<String>(
-                        value: _deliveryNoteFormat,
+                        value: ['THERMAL_80MM', 'THERMAL_72MM', 'THERMAL_58MM', 'CUSTOM_ROLL', 'A4', 'A5', 'CUSTOM'].contains(_deliveryNoteFormat)
+                            ? _deliveryNoteFormat
+                            : 'THERMAL_80MM',
                         decoration: const InputDecoration(
                           labelText: 'Default Delivery Note Format',
                           border: inputBorder,
@@ -1538,15 +1665,31 @@ class _PrintSettingsContentState extends State<PrintSettingsContent> {
                         items: const [
                           DropdownMenuItem(
                             value: 'THERMAL_80MM',
-                            child: Text('Thermal Receipt (80mm) - Recommended'),
+                            child: Text('Thermal 80mm Roll (Auto Height - 72mm Printable)'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'THERMAL_72MM',
+                            child: Text('Thermal 72mm Roll (Auto Height - Continuous)'),
                           ),
                           DropdownMenuItem(
                             value: 'THERMAL_58MM',
-                            child: Text('Thermal Receipt (58mm)'),
+                            child: Text('Thermal 58mm Roll (Auto Height - 48mm Printable)'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'CUSTOM_ROLL',
+                            child: Text('Custom Roll Width (Auto Height - Continuous)'),
                           ),
                           DropdownMenuItem(
                             value: 'A4',
-                            child: Text('Standard A4 Sheet Document'),
+                            child: Text('Standard A4 Sheet Document (210 x 297 mm)'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'A5',
+                            child: Text('Standard A5 Sheet Document (148 x 210 mm)'),
+                          ),
+                          DropdownMenuItem(
+                            value: 'CUSTOM',
+                            child: Text('Custom Cut Sheet Dimensions (Width x Height mm)'),
                           ),
                         ],
                         onChanged: (val) {
@@ -1576,6 +1719,71 @@ class _PrintSettingsContentState extends State<PrintSettingsContent> {
                     ),
                   ],
                 ),
+                if (_deliveryNoteFormat == 'CUSTOM_ROLL') ...[
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      SizedBox(
+                        width: 220,
+                        child: TextFormField(
+                          controller: _deliveryNoteCustomWidthController,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          decoration: const InputDecoration(
+                            labelText: 'Roll Printable Width (mm)',
+                            hintText: 'e.g. 72.0',
+                            suffixText: 'mm',
+                            border: inputBorder,
+                            prefixIcon: Icon(Icons.swap_horiz_rounded),
+                          ),
+                          onChanged: (_) => setState(() {}),
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      const Expanded(
+                        child: Text(
+                          'Thermal paper height is continuous & automatic: it prints only the delivery note content length and cuts.',
+                          style: TextStyle(fontSize: 12, color: Colors.grey),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+                if (_deliveryNoteFormat == 'CUSTOM') ...[
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextFormField(
+                          controller: _deliveryNoteCustomWidthController,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          decoration: const InputDecoration(
+                            labelText: 'Custom Paper Width (mm)',
+                            hintText: 'e.g. 148.0',
+                            suffixText: 'mm',
+                            border: inputBorder,
+                            prefixIcon: Icon(Icons.swap_horiz_rounded),
+                          ),
+                          onChanged: (_) => setState(() {}),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextFormField(
+                          controller: _deliveryNoteCustomHeightController,
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          decoration: const InputDecoration(
+                            labelText: 'Custom Paper Height (mm)',
+                            hintText: 'e.g. 210.0',
+                            suffixText: 'mm',
+                            border: inputBorder,
+                            prefixIcon: Icon(Icons.swap_vert_rounded),
+                          ),
+                          onChanged: (_) => setState(() {}),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),

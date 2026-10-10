@@ -863,8 +863,10 @@ class PrintSettingsModel {
   final double? marginVerticalMm;
   final double? marginHorizontalMm;
   final String receiptLanguage;
-  final String deliveryNoteFormat; // 'THERMAL_80MM' | 'THERMAL_58MM' | 'A4'
+  final String deliveryNoteFormat; // 'THERMAL_80MM' | 'THERMAL_72MM' | 'THERMAL_58MM' | 'CUSTOM_ROLL' | 'A4' | 'A5' | 'CUSTOM'
   final String? deliveryNotePrinterName;
+  final double? deliveryNoteCustomWidthMm;
+  final double? deliveryNoteCustomHeightMm;
 
   const PrintSettingsModel({
     required this.id,
@@ -882,8 +884,8 @@ class PrintSettingsModel {
     this.showCustomerAddress = false,
     this.marginTop = 10,
     this.marginLeft = 10,
-    this.fontSize = 10,
-    this.lineSpacing = 1.2,
+    this.fontSize = 8.5,
+    this.lineSpacing = 1.05,
     this.thankYouMessage = 'Thank you for your business!',
     this.returnPolicy,
     this.socialLinks,
@@ -908,6 +910,8 @@ class PrintSettingsModel {
     this.receiptLanguage = 'en',
     this.deliveryNoteFormat = 'THERMAL_80MM',
     this.deliveryNotePrinterName,
+    this.deliveryNoteCustomWidthMm,
+    this.deliveryNoteCustomHeightMm,
   });
 
   PrintSettingsCompanion toCompanion() {

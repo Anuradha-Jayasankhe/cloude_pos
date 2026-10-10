@@ -595,6 +595,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String? _localLabelPrinterName;
   String _localDeliveryNoteFormat = 'THERMAL_80MM';
   String? _localDeliveryNotePrinterName;
+  double _localDeliveryNoteCustomWidthMm = 148.0;
+  double _localDeliveryNoteCustomHeightMm = 210.0;
   String _productScanBuffer = '';
   DateTime _lastProductScanTime = DateTime.now();
   bool _isProductDialogOpen = false;
@@ -894,6 +896,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _localLabelPrinterName = prefs.getString('local_printer_label_name');
       _localDeliveryNoteFormat = prefs.getString('local_printer_delivery_note_format') ?? 'THERMAL_80MM';
       _localDeliveryNotePrinterName = prefs.getString('local_printer_delivery_note_printer_name');
+      _localDeliveryNoteCustomWidthMm = prefs.getDouble('local_printer_delivery_note_custom_width_mm') ?? 148.0;
+      _localDeliveryNoteCustomHeightMm = prefs.getDouble('local_printer_delivery_note_custom_height_mm') ?? 210.0;
 
       _barcodePreset = prefs.getString('barcode_preset') ?? 'zebra_zd230_2col';
       _barcodePaperFormat = prefs.getString('barcode_paper_format') ?? 'custom_roll';
@@ -968,6 +972,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       await prefs.remove('local_printer_label_name');
     }
     await prefs.setString('local_printer_delivery_note_format', _localDeliveryNoteFormat);
+    await prefs.setDouble('local_printer_delivery_note_custom_width_mm', _localDeliveryNoteCustomWidthMm);
+    await prefs.setDouble('local_printer_delivery_note_custom_height_mm', _localDeliveryNoteCustomHeightMm);
     if (_localDeliveryNotePrinterName != null) {
       await prefs.setString('local_printer_delivery_note_printer_name', _localDeliveryNotePrinterName!);
     } else {
@@ -7606,26 +7612,45 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
           )
           .toList(),
-      items: lines.asMap().entries.map((entry) {
-        final index = entry.key + 1;
-        final line = entry.value;
-        return domain.SaleItem(
-          id: '${sale.id}-$index',
-          saleId: sale.id,
-          productId: line.product.id,
-          productName: line.product.name,
-          quantity: line.qty.toDouble(),
-          unitPrice: line.unitPriceAfterDiscount,
-          originalPrice: line.product.price,
-          discount: line.discountLineTotal,
-          discountType: line.discountType,
-          total: line.totalPrice,
-          tenantId: _activeTenantId ?? 'local',
-        );
-      }).toList(),
-      customer: sale.customerName != 'Walk-in Customer'
+      items: lines.isNotEmpty
+          ? lines.asMap().entries.map((entry) {
+              final index = entry.key + 1;
+              final line = entry.value;
+              return domain.SaleItem(
+                id: '${sale.id}-$index',
+                saleId: sale.id,
+                productId: line.product.id,
+                productName: line.product.name,
+                quantity: line.qty.toDouble(),
+                unitPrice: line.unitPriceAfterDiscount,
+                originalPrice: line.product.price,
+                discount: line.discountLineTotal,
+                discountType: line.discountType,
+                total: line.totalPrice,
+                tenantId: _activeTenantId ?? 'local',
+              );
+            }).toList()
+          : sale.items.asMap().entries.map((entry) {
+              final index = entry.key + 1;
+              final item = entry.value;
+              return domain.SaleItem(
+                id: '${sale.id}-$index',
+                saleId: sale.id,
+                productId: item.productId,
+                productName: item.productName,
+                quantity: item.quantity.toDouble(),
+                unitPrice: item.unitPrice,
+                originalPrice: item.unitPrice + item.discount,
+                discount: item.discount,
+                discountType: item.discountType,
+                total: item.lineTotal,
+                tenantId: _activeTenantId ?? 'local',
+              );
+            }).toList(),
+      customer: (sale.customerName.trim().isNotEmpty &&
+              sale.customerName.trim().toLowerCase() != 'walk-in customer')
           ? domain.Customer(
-              id: '',
+              id: sale.customerId.isNotEmpty ? sale.customerId : 'C001',
               tenantId: _activeTenantId ?? 'local',
               name: sale.customerName,
               phone: sale.customerPhone,
@@ -7672,7 +7697,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     } catch (_) {}
   }
 
-  Future<void> _printDeliveryNote(_SaleRecord sale) async {
+  Future<void> _printDeliveryNote(_SaleRecord sale, {bool prompt = true}) async {
     final settings = await _currentPrintSettings();
     final domainSale = domain.Sale(
       id: sale.id,
@@ -7757,6 +7782,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     if (!mounted) return;
 
+    if (!prompt) {
+      await PrintService.printDeliveryNote(
+        sale: domainSale,
+        settings: settings,
+        currencySymbol: currencySymbol,
+        storeName: _companyName,
+        storeAddress: storeAddress,
+        storePhone: _companyPhone,
+        formatOverride: settings.deliveryNoteFormat,
+      );
+      return;
+    }
+
     final configuredPrinter = settings.deliveryNotePrinterName?.isNotEmpty == true
         ? settings.deliveryNotePrinterName!
         : (settings.printerName?.isNotEmpty == true ? settings.printerName! : 'Counter Receipt Printer');
@@ -7785,7 +7823,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ],
             ),
             content: SizedBox(
-              width: 440,
+              width: 520,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -7845,7 +7883,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       const SizedBox(width: 6),
                       Expanded(
                         child: Text(
-                          'Printer: $configuredPrinter (Set in Settings)',
+                          'Printer: $configuredPrinter',
                           style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Colors.blueGrey),
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -7855,93 +7893,66 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   const SizedBox(height: 12),
                   const Text('Paper Format:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
                   const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
+                  () {
+                    Widget formatCard(String id, String title, String subtitle, IconData icon) {
+                      final isSelected = selectedFormat == id;
+                      return Expanded(
                         child: InkWell(
-                          onTap: () => setDialogState(() => selectedFormat = 'THERMAL_80MM'),
+                          onTap: () => setDialogState(() => selectedFormat = id),
                           borderRadius: BorderRadius.circular(8),
                           child: Container(
-                            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+                            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
                             decoration: BoxDecoration(
-                              color: selectedFormat == 'THERMAL_80MM'
+                              color: isSelected
                                   ? primaryColor.withValues(alpha: 0.15)
                                   : (isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9)),
                               borderRadius: BorderRadius.circular(8),
                               border: Border.all(
-                                color: selectedFormat == 'THERMAL_80MM' ? primaryColor : Colors.transparent,
+                                color: isSelected ? primaryColor : Colors.transparent,
                                 width: 1.5,
                               ),
                             ),
                             child: Column(
                               children: [
-                                Icon(Icons.receipt_long, size: 22, color: selectedFormat == 'THERMAL_80MM' ? primaryColor : Colors.grey),
+                                Icon(icon, size: 20, color: isSelected ? primaryColor : Colors.grey),
                                 const SizedBox(height: 4),
-                                const Text('Thermal 80mm', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11)),
-                                const Text('(Roll)', style: TextStyle(fontSize: 10, color: Colors.grey)),
+                                Text(
+                                  title,
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 10.5,
+                                    color: isSelected ? primaryColor : null,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                  maxLines: 1,
+                                ),
+                                Text(
+                                  subtitle,
+                                  style: const TextStyle(fontSize: 9, color: Colors.grey),
+                                  textAlign: TextAlign.center,
+                                  maxLines: 1,
+                                ),
                               ],
                             ),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: InkWell(
-                          onTap: () => setDialogState(() => selectedFormat = 'THERMAL_58MM'),
-                          borderRadius: BorderRadius.circular(8),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
-                            decoration: BoxDecoration(
-                              color: selectedFormat == 'THERMAL_58MM'
-                                  ? primaryColor.withValues(alpha: 0.15)
-                                  : (isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9)),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(
-                                color: selectedFormat == 'THERMAL_58MM' ? primaryColor : Colors.transparent,
-                                width: 1.5,
-                              ),
-                            ),
-                            child: Column(
-                              children: [
-                                Icon(Icons.receipt, size: 22, color: selectedFormat == 'THERMAL_58MM' ? primaryColor : Colors.grey),
-                                const SizedBox(height: 4),
-                                const Text('Thermal 58mm', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11)),
-                                const Text('(Narrow)', style: TextStyle(fontSize: 10, color: Colors.grey)),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: InkWell(
-                          onTap: () => setDialogState(() => selectedFormat = 'A4'),
-                          borderRadius: BorderRadius.circular(8),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
-                            decoration: BoxDecoration(
-                              color: selectedFormat == 'A4'
-                                  ? primaryColor.withValues(alpha: 0.15)
-                                  : (isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9)),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(
-                                color: selectedFormat == 'A4' ? primaryColor : Colors.transparent,
-                                width: 1.5,
-                              ),
-                            ),
-                            child: Column(
-                              children: [
-                                Icon(Icons.description_outlined, size: 22, color: selectedFormat == 'A4' ? primaryColor : Colors.grey),
-                                const SizedBox(height: 4),
-                                const Text('A4 Document', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11)),
-                                const Text('(Sheet)', style: TextStyle(fontSize: 10, color: Colors.grey)),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                      );
+                    }
+
+                    return Row(
+                      children: [
+                        formatCard('THERMAL_80MM', '80mm Roll', '(Auto)', Icons.receipt_long),
+                        const SizedBox(width: 6),
+                        formatCard('THERMAL_72MM', '72mm Roll', '(Auto)', Icons.receipt_long_outlined),
+                        const SizedBox(width: 6),
+                        formatCard('THERMAL_58MM', '58mm Roll', '(Auto)', Icons.receipt),
+                        const SizedBox(width: 6),
+                        formatCard('A4', 'A4 Sheet', '(210x297)', Icons.description_outlined),
+                        const SizedBox(width: 6),
+                        formatCard('A5', 'A5 Sheet', '(148x210)', Icons.menu_book_outlined),
+                      ],
+                    );
+                  }(),
                 ],
               ),
             ),
@@ -8467,6 +8478,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ? _localReceiptPaperSize
         : (rawSettings?.paperSize ?? '80mm');
     final isA4 = effectivePaper.toLowerCase().contains('a4');
+    final prefs = await SharedPreferences.getInstance();
+    final effectiveFontSize = prefs.getDouble('bill_font_size') ?? (rawSettings?.fontSize ?? 8.5);
+    final effectiveLineSpacing = prefs.getDouble('bill_line_spacing') ?? (rawSettings?.lineSpacing ?? 1.05);
+
     return domain.PrintSettingsModel(
       id: rawSettings?.id ?? 'default',
       tenantId: rawSettings?.tenantId ?? (_activeTenantId ?? 'local'),
@@ -8475,32 +8490,34 @@ class _DashboardScreenState extends State<DashboardScreen> {
       printerType: isA4 ? 'A4' : (rawSettings?.printerType ?? 'THERMAL'),
       invoiceTemplate: rawSettings?.invoiceTemplate ?? 'PROFESSIONAL',
       autoPrint: _localAutoPrintOnSaleComplete,
-      showLogo: _receiptShowLogo && (rawSettings?.showLogo ?? true),
-      showBarcode: _receiptShowReceiptNumber && (rawSettings?.showBarcode ?? false),
-      showQr: rawSettings?.showQr ?? true,
-      showTax: _receiptShowTax && (rawSettings?.showTax ?? true),
-      showDiscount: rawSettings?.showDiscount ?? true,
-      showCustomerAddress: _receiptShowShopAddress && (rawSettings?.showCustomerAddress ?? false),
+      showLogo: prefs.getBool('bill_show_logo') ?? (_receiptShowLogo && (rawSettings?.showLogo ?? true)),
+      showBarcode: prefs.getBool('bill_show_barcode') ?? (_receiptShowReceiptNumber && (rawSettings?.showBarcode ?? false)),
+      showQr: prefs.getBool('bill_show_qr') ?? (rawSettings?.showQr ?? true),
+      showTax: prefs.getBool('bill_show_tax') ?? (_receiptShowTax && (rawSettings?.showTax ?? true)),
+      showDiscount: prefs.getBool('bill_show_discounts') ?? (rawSettings?.showDiscount ?? true),
+      showCustomerAddress: prefs.getBool('bill_show_customer_address') ?? (_receiptShowShopAddress && (rawSettings?.showCustomerAddress ?? false)),
       marginTop: _localMarginVMm,
       marginLeft: _localMarginHMm,
-      fontSize: rawSettings?.fontSize ?? 10,
-      lineSpacing: rawSettings?.lineSpacing ?? 1.2,
-      thankYouMessage: rawSettings?.thankYouMessage ?? 'Thank you for shopping with us!',
+      fontSize: effectiveFontSize,
+      lineSpacing: effectiveLineSpacing,
+      thankYouMessage: prefs.getString('bill_thank_you_message') ?? (rawSettings?.thankYouMessage ?? 'Thank you for shopping with us!'),
       returnPolicy: rawSettings?.returnPolicy ?? (_receiptShowReturnPolicy ? _receiptNote : null),
       socialLinks: rawSettings?.socialLinks,
-      showShopHeader: _receiptShowCompanyName,
-      showInvoiceNumber: _receiptShowReceiptNumber,
-      showDateTime: _receiptShowDate || _receiptShowTime,
-      showCashierName: _receiptShowCashier,
-      showCustomerName: _receiptShowCustomer,
-      showItemTable: true,
-      showItemNumbers: true,
-      showSubtotal: true,
-      showTotal: true,
-      showPaymentDetails: _receiptShowPaymentMethod,
-      showFooter: _receiptFooter.trim().isNotEmpty,
-      showTerms: _receiptShowReturnPolicy,
-      invoiceTerms: _receiptNote,
+      showShopHeader: prefs.getBool('bill_show_shop_header') ?? _receiptShowCompanyName,
+      showInvoiceNumber: prefs.getBool('bill_show_invoice_no') ?? _receiptShowReceiptNumber,
+      showDateTime: prefs.getBool('bill_show_date_time') ?? (_receiptShowDate || _receiptShowTime),
+      showCashierName: prefs.getBool('bill_show_cashier_name') ?? _receiptShowCashier,
+      showCustomerName: prefs.getBool('bill_show_customer_name') ?? _receiptShowCustomer,
+      showItemTable: prefs.getBool('bill_show_items_table') ?? true,
+      showItemNumbers: prefs.getBool('bill_show_item_numbers') ?? true,
+      showSubtotal: prefs.getBool('bill_show_subtotal') ?? true,
+      showTotal: prefs.getBool('bill_show_total') ?? true,
+      showPaymentDetails: prefs.getBool('bill_show_payment_details') ?? _receiptShowPaymentMethod,
+      showFooter: prefs.getBool('bill_show_footer') ?? (_receiptFooter.trim().isNotEmpty),
+      showTerms: prefs.getBool('bill_show_terms') ?? _receiptShowReturnPolicy,
+      invoiceTerms: prefs.getString('bill_invoice_terms') ?? _receiptNote,
+      showSlogan: prefs.getBool('bill_show_slogan') ?? true,
+      invoiceSlogan: prefs.getString('bill_invoice_slogan') ?? '',
       paperWidthMm: _localPaperWidthMm,
       marginVerticalMm: _localMarginVMm,
       marginHorizontalMm: _localMarginHMm,
@@ -8511,6 +8528,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
               : 'en',
       deliveryNoteFormat: _localDeliveryNoteFormat,
       deliveryNotePrinterName: _localDeliveryNotePrinterName,
+      deliveryNoteCustomWidthMm: _localDeliveryNoteCustomWidthMm,
+      deliveryNoteCustomHeightMm: _localDeliveryNoteCustomHeightMm,
     );
   }
 
