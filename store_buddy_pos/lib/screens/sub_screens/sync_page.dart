@@ -1095,6 +1095,7 @@ extension _SyncPageExt on _DashboardScreenState {
     String? initialSupplierId,
     String? name,
     String? initialLocationId,
+    String? barcode,
   }) async {
     final self = this;
     final idController = TextEditingController(
@@ -1105,7 +1106,7 @@ extension _SyncPageExt on _DashboardScreenState {
       text: existing?.name ?? name ?? '',
     );
     final barcodeController = TextEditingController(
-      text: existing?.barcode ?? _generateBarcodeValue(),
+      text: existing?.barcode ?? (barcode != null && barcode.trim().isNotEmpty ? barcode.trim() : _generateBarcodeValue()),
     );
     final priceController = TextEditingController(
       text: existing?.price.toString() ?? '0',

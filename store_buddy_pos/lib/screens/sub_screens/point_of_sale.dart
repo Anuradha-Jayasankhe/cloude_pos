@@ -122,6 +122,172 @@ extension _point_of_saleExt on _DashboardScreenState {
     );
   }
 
+  Future<void> _handleBarcodeOrSearchScan(String val) async {
+    final trimmedVal = val.trim();
+    if (trimmedVal.isEmpty) return;
+
+    // 1. Check IMEI match first
+    final imeiMatchedProduct = _findProductByImei(trimmedVal);
+    if (imeiMatchedProduct != null) {
+      final exactImei = imeiMatchedProduct.imeiList.firstWhere(
+        (x) => x.toLowerCase() == trimmedVal.toLowerCase(),
+        orElse: () => trimmedVal,
+      );
+      _addToCartWithImeiSelection(imeiMatchedProduct, exactImei);
+      _productSearchController.clear();
+      _posProductSearchFocusNode.requestFocus();
+      return;
+    }
+
+    // 2. Check Barcode or ID / SKU match
+    final matchedList = _scopedProducts
+        .where(
+          (p) =>
+              (p.barcode.trim().isNotEmpty &&
+                  p.barcode.trim().toLowerCase() == trimmedVal.toLowerCase()) ||
+              p.id.trim().toLowerCase() == trimmedVal.toLowerCase(),
+        )
+        .toList();
+
+    if (matchedList.isNotEmpty) {
+      if (matchedList.length > 1) {
+        _showProductSkuSelectionDialog(matchedList);
+      } else {
+        final p = matchedList.first;
+        final sameNameProducts = _scopedProducts
+            .where(
+              (sp) =>
+                  sp.name.trim().toLowerCase() == p.name.trim().toLowerCase(),
+            )
+            .toList();
+
+        if (sameNameProducts.length > 1) {
+          _showProductSkuSelectionDialog(sameNameProducts);
+        } else {
+          if (p.allowLooseSales) {
+            _showDualUnitSelectionDialog(p);
+          } else {
+            _addToCartWithImeiSelection(p);
+          }
+          _productSearchController.clear();
+          _posProductSearchFocusNode.requestFocus();
+        }
+      }
+      return;
+    }
+
+    // 3. Fallback exact Name match
+    final exactNameMatched = _scopedProducts
+        .where((p) => p.name.trim().toLowerCase() == trimmedVal.toLowerCase())
+        .toList();
+    if (exactNameMatched.length == 1) {
+      final p = exactNameMatched.first;
+      if (p.allowLooseSales) {
+        _showDualUnitSelectionDialog(p);
+      } else {
+        _addToCartWithImeiSelection(p);
+      }
+      _productSearchController.clear();
+      _posProductSearchFocusNode.requestFocus();
+      return;
+    }
+
+    // 4. Barcode not registered: Offer prompt to add new product with this barcode
+    if (!mounted) return;
+    final shouldAdd = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF6366F1).withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.qr_code_scanner_rounded, color: Color(0xFF6366F1)),
+            ),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Text(
+                'Barcode Not Found',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.amber.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.amber.withValues(alpha: 0.3)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.qr_code, size: 20, color: Colors.orange),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      trimmedVal,
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'This barcode is not registered in your product catalog. Would you like to create and add this new product to inventory now?',
+              style: TextStyle(fontSize: 13, height: 1.4),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.pop(ctx, true),
+            icon: const Icon(Icons.add_rounded, size: 18),
+            label: const Text('Add Product & Add to Cart'),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF6366F1),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldAdd == true && mounted) {
+      final result = await _showProductDialog(barcode: trimmedVal);
+      if (result != null && mounted) {
+        await _handleProductCreation(result);
+        if (!mounted) return;
+        final createdProduct = _products.firstWhere(
+          (p) => p.id == result.product.id || p.barcode == result.product.barcode,
+          orElse: () => result.product,
+        );
+        if (createdProduct.allowLooseSales) {
+          _showDualUnitSelectionDialog(createdProduct);
+        } else {
+          _addToCartWithImeiSelection(createdProduct);
+        }
+        _productSearchController.clear();
+        _posProductSearchFocusNode.requestFocus();
+      }
+    } else {
+      _productSearchController.clear();
+      _posProductSearchFocusNode.requestFocus();
+    }
+  }
+
   Future<_ServiceJobItem?> _showPosServicePickerDialog() async {
     final activeServices = _serviceJobs
         .where((service) => service.active)
@@ -748,62 +914,9 @@ extension _point_of_saleExt on _DashboardScreenState {
                                 height: toolbarControlHeight,
                                 child: TextField(
                                   controller: _productSearchController,
+                                  focusNode: _posProductSearchFocusNode,
                                   onChanged: (_) => setState(() {}),
-                                  onSubmitted: (val) {
-                                    final trimmedVal = val.trim();
-                                    final imeiMatchedProduct =
-                                        _findProductByImei(trimmedVal);
-                                    if (imeiMatchedProduct != null) {
-                                      final exactImei = imeiMatchedProduct
-                                          .imeiList
-                                          .firstWhere(
-                                            (x) =>
-                                                x.toLowerCase() ==
-                                                trimmedVal.toLowerCase(),
-                                            orElse: () => trimmedVal,
-                                          );
-                                      _addToCartWithImeiSelection(
-                                        imeiMatchedProduct,
-                                        exactImei,
-                                      );
-                                      _productSearchController.clear();
-                                      return;
-                                    }
-
-                                    final matchedList = _scopedProducts
-                                        .where(
-                                          (p) =>
-                                              (p.barcode.trim().isNotEmpty &&
-                                               p.barcode.trim().toLowerCase() == trimmedVal.toLowerCase()) ||
-                                              p.id.trim().toLowerCase() == trimmedVal.toLowerCase(),
-                                        )
-                                        .toList();
-                                    if (matchedList.isNotEmpty) {
-                                      if (matchedList.length > 1) {
-                                        _showProductSkuSelectionDialog(
-                                          matchedList,
-                                        );
-                                      } else {
-                                        final p = matchedList.first;
-                                        final sameNameProducts = _scopedProducts
-                                            .where(
-                                              (sp) =>
-                                                  sp.name.trim().toLowerCase() ==
-                                                  p.name.trim().toLowerCase(),
-                                            )
-                                            .toList();
-
-                                        if (sameNameProducts.length > 1) {
-                                          _showProductSkuSelectionDialog(
-                                            sameNameProducts,
-                                          );
-                                        } else {
-                                          _addToCartWithImeiSelection(p);
-                                          _productSearchController.clear();
-                                        }
-                                      }
-                                    }
-                                  },
+                                  onSubmitted: _handleBarcodeOrSearchScan,
                                   decoration: InputDecoration(
                                     hintText: 'Search products or scan',
                                     prefixIcon: const Icon(Icons.search),
@@ -947,68 +1060,9 @@ extension _point_of_saleExt on _DashboardScreenState {
                                   height: toolbarControlHeight,
                                   child: TextField(
                                     controller: _productSearchController,
+                                    focusNode: _posProductSearchFocusNode,
                                     onChanged: (_) => setState(() {}),
-                                    onSubmitted: (val) {
-                                      final trimmedVal = val.trim();
-                                      final imeiMatchedProduct =
-                                          _findProductByImei(trimmedVal);
-                                      if (imeiMatchedProduct != null) {
-                                        final exactImei = imeiMatchedProduct
-                                            .imeiList
-                                            .firstWhere(
-                                              (x) =>
-                                                  x.toLowerCase() ==
-                                                  trimmedVal.toLowerCase(),
-                                              orElse: () => trimmedVal,
-                                            );
-                                        _addToCartWithImeiSelection(
-                                          imeiMatchedProduct,
-                                          exactImei,
-                                        );
-                                        _productSearchController.clear();
-                                        return;
-                                      }
-
-                                      final matchedList = _scopedProducts
-                                          .where(
-                                            (p) =>
-                                                (p.barcode.trim().isNotEmpty &&
-                                                 p.barcode.trim().toLowerCase() == trimmedVal.toLowerCase()) ||
-                                                p.id.trim().toLowerCase() == trimmedVal.toLowerCase(),
-                                          )
-                                          .toList();
-                                      if (matchedList.isNotEmpty) {
-                                        if (matchedList.length > 1) {
-                                          _showProductSkuSelectionDialog(
-                                            matchedList,
-                                          );
-                                        } else {
-                                          final p = matchedList.first;
-                                          final sameNameProducts = _scopedProducts
-                                              .where(
-                                                (sp) =>
-                                                    sp.name
-                                                        .trim()
-                                                        .toLowerCase() ==
-                                                    p.name.trim().toLowerCase(),
-                                              )
-                                              .toList();
-
-                                          if (sameNameProducts.length > 1) {
-                                            _showProductSkuSelectionDialog(
-                                              sameNameProducts,
-                                            );
-                                          } else {
-                                            if (p.allowLooseSales) {
-                                              _showDualUnitSelectionDialog(p);
-                                            } else {
-                                              _addToCartWithImeiSelection(p);
-                                            }
-                                            _productSearchController.clear();
-                                          }
-                                        }
-                                      }
-                                    },
+                                    onSubmitted: _handleBarcodeOrSearchScan,
                                     decoration: InputDecoration(
                                       hintText: 'Search products or scan',
                                       prefixIcon: const Icon(Icons.search),
@@ -1044,7 +1098,16 @@ extension _point_of_saleExt on _DashboardScreenState {
                               SizedBox(
                                 height: toolbarControlHeight,
                                 child: OutlinedButton.icon(
-                                  onPressed: () {},
+                                  onPressed: () {
+                                    _posProductSearchFocusNode.requestFocus();
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Barcode Scanner Ready - Scan product barcode or press Enter'),
+                                        duration: Duration(seconds: 2),
+                                        behavior: SnackBarBehavior.floating,
+                                      ),
+                                    );
+                                  },
                                   style: OutlinedButton.styleFrom(
                                     foregroundColor: const Color(0xFF2E9C64),
                                     side: const BorderSide(
@@ -5067,30 +5130,35 @@ extension _point_of_saleExt on _DashboardScreenState {
                                 }
                                 // ──────────────────────────────────────────
 
-                                // Sync only after the sale, inventory, and
-                                // audit writes are all queued. Triggering it
-                                // earlier can reload stale stock before the
-                                // product update lands in the local database.
-                                await _refreshPendingSyncQueue();
-                                await _triggerImmediateSync(
-                                  action: 'INSERT',
-                                  module: 'sales',
-                                  reference: sale.id,
-                                );
+                                 // Trigger Cash Drawer kick immediately if enabled
+                                 unawaited(_maybeOpenCashDrawer(paymentMethod: paymentMethod));
 
-                                // Trigger Cash Drawer kick if enabled
-                                await _maybeOpenCashDrawer(paymentMethod: paymentMethod);
+                                 // Print receipt immediately with zero delay
+                                 String? printWarning;
+                                 try {
+                                   await _printReceipt(
+                                     sale: sale,
+                                     lines: cartItems,
+                                   );
+                                 } catch (e) {
+                                   printWarning =
+                                       'Sale saved, but receipt printing failed: $e';
+                                 }
 
-                                String? printWarning;
-                                try {
-                                  await _printReceipt(
-                                    sale: sale,
-                                    lines: cartItems,
-                                  );
-                                } catch (e) {
-                                  printWarning =
-                                      'Sale saved, but receipt printing failed: $e';
-                                }
+                                 // Sync queue update runs asynchronously in background so
+                                 // receipt printing and checkout UI are never blocked by cloud HTTP latency
+                                 unawaited(() async {
+                                   try {
+                                     await _refreshPendingSyncQueue();
+                                     await _triggerImmediateSync(
+                                       action: 'INSERT',
+                                       module: 'sales',
+                                       reference: sale.id,
+                                     );
+                                   } catch (syncErr) {
+                                     debugPrint('Background sync after sale complete error: $syncErr');
+                                   }
+                                 }());
 
                                 if (paymentMethod == 'COD' ||
                                     sale.shippingAddress.isNotEmpty ||

@@ -595,6 +595,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String? _localLabelPrinterName;
   String _localDeliveryNoteFormat = 'THERMAL_80MM';
   String? _localDeliveryNotePrinterName;
+  String _productScanBuffer = '';
+  DateTime _lastProductScanTime = DateTime.now();
+  bool _isProductDialogOpen = false;
 
   final List<_MobileReloadRecord> _mobileReloads = [];
   Map<String, List<Map<String, dynamic>>> _operatorCommissions = {
@@ -661,21 +664,29 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String _dashboardPeriod = 'This Month';
   String _posCategoryFilter = 'All Categories';
   String _purchaseOrderStatusFilter = 'All Statuses';
-  String _barcodePreset = 'a4_3x10';
-  String _barcodePaperFormat = 'A4';
+  String _barcodePreset = 'zebra_zd230_2col';
+  String _barcodePaperFormat = 'custom_roll';
   String _barcodeFormat = 'CODE128';
-  double _barcodeLabelWidthMm = 64;
-  double _barcodeLabelHeightMm = 25;
-  double _barcodeHorizontalGapMm = 2.5;
+  String _barcodePrinterType = 'thermal';
+  double _barcodePaperWidthMm = 101.6;
+  double _barcodeLabelWidthMm = 48.0;
+  double _barcodeLabelHeightMm = 25.4;
+  double _barcodeHorizontalGapMm = 2.0;
   double _barcodeVerticalGapMm = 2.0;
-  double _barcodeMarginMm = 6.0;
+  double _barcodeMarginMm = 1.1;
+  double _barcodeRightShiftMm = 0.0;
+  double _barcodeTopShiftMm = 3.5;
   double _barcodeFontScale = 1.0;
+  double _barcodeHeightMm = 7.0;
+  bool _barcodeShowStoreName = false;
   bool _barcodeShowName = true;
   bool _barcodeShowPrice = true;
   bool _barcodeShowSku = true;
   bool _barcodeShowCodeText = true;
   bool _barcodeShowCategory = false;
   bool _barcodePrintIndividualImei = true;
+  int _barcodeRotationDegrees = 0; // 0, 90, 180, 270
+  int _barcodeColumns = 2; // 1, 2, 3, 4
   final Set<String> _selectedBarcodeProductIds = <String>{};
   final Map<String, int> _barcodeQuantityByProduct = <String, int>{};
   DateTime? _lastSyncAt;
@@ -716,6 +727,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   final TextEditingController _usersSearchController = TextEditingController();
   final TextEditingController _productSearchController =
       TextEditingController();
+  final FocusNode _posProductSearchFocusNode = FocusNode();
   final TextEditingController _categoriesSearchController =
       TextEditingController();
   final TextEditingController _paymentMethodController =
@@ -751,6 +763,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
       TextEditingController();
   final TextEditingController _barcodeSearchController =
       TextEditingController();
+  final TextEditingController _barcodeRollWidthController =
+      TextEditingController(text: '101.6');
+  final TextEditingController _barcodeLabelWidthController =
+      TextEditingController(text: '31.8');
+  final TextEditingController _barcodeLabelHeightController =
+      TextEditingController(text: '22.0');
+  final TextEditingController _barcodeHeightController =
+      TextEditingController(text: '6.5');
+  final TextEditingController _barcodeColGapController =
+      TextEditingController(text: '2.0');
+  final TextEditingController _barcodeRowGapController =
+      TextEditingController(text: '2.0');
+  final TextEditingController _barcodeTopShiftController =
+      TextEditingController(text: '3.5');
+  final TextEditingController _barcodeLeftShiftController =
+      TextEditingController(text: '0.0');
+  final TextEditingController _barcodeScaleController =
+      TextEditingController(text: '0.85');
   String _jobCardStatusFilter = 'ALL';
   String _jobCardPriorityFilter = 'ALL';
   String _returnsStatusFilter = 'All Statuses';
@@ -816,6 +846,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _loadDeviceLocalPrinterSettings();
     _loadStoreLogins();
     _checkSubscriptionAndEnforceExpiry();
+    HardwareKeyboard.instance.addHandler(_handleGlobalHardwareKey);
   }
 
   Future<void> _checkSubscriptionAndEnforceExpiry() async {
@@ -863,7 +894,47 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _localLabelPrinterName = prefs.getString('local_printer_label_name');
       _localDeliveryNoteFormat = prefs.getString('local_printer_delivery_note_format') ?? 'THERMAL_80MM';
       _localDeliveryNotePrinterName = prefs.getString('local_printer_delivery_note_printer_name');
+
+      _barcodePreset = prefs.getString('barcode_preset') ?? 'zebra_zd230_2col';
+      _barcodePaperFormat = prefs.getString('barcode_paper_format') ?? 'custom_roll';
+      _barcodeFormat = prefs.getString('barcode_format') ?? 'CODE128';
+      _barcodePrinterType = prefs.getString('barcode_printer_type') ?? 'thermal';
+      _barcodePaperWidthMm = prefs.getDouble('barcode_paper_width_mm') ?? 101.6;
+      _barcodeLabelWidthMm = prefs.getDouble('barcode_label_width_mm') ?? 48.0;
+      _barcodeLabelHeightMm = prefs.getDouble('barcode_label_height_mm') ?? 25.4;
+      _barcodeHorizontalGapMm = prefs.getDouble('barcode_horizontal_gap_mm') ?? 2.0;
+      _barcodeVerticalGapMm = prefs.getDouble('barcode_vertical_gap_mm') ?? 2.0;
+      _barcodeMarginMm = prefs.getDouble('barcode_margin_mm') ?? 1.1;
+      _barcodeRightShiftMm = prefs.getDouble('barcode_right_shift_mm') ?? 0.0;
+      _barcodeTopShiftMm = prefs.getDouble('barcode_top_shift_mm') ?? 12.0;
+      if (_barcodeTopShiftMm > 25.0) {
+        _barcodeTopShiftMm = 12.0;
+      }
+      _barcodeFontScale = prefs.getDouble('barcode_font_scale') ?? 1.0;
+      _barcodeHeightMm = prefs.getDouble('barcode_height_mm') ?? 7.0;
+      _barcodeShowStoreName = prefs.getBool('barcode_show_store_name') ?? false;
+      _barcodeShowName = prefs.getBool('barcode_show_name') ?? true;
+      _barcodeShowPrice = prefs.getBool('barcode_show_price') ?? true;
+      _barcodeShowSku = prefs.getBool('barcode_show_sku') ?? true;
+      _barcodeShowCodeText = prefs.getBool('barcode_show_code_text') ?? true;
+      _barcodeShowCategory = prefs.getBool('barcode_show_category') ?? false;
+      _barcodePrintIndividualImei = prefs.getBool('barcode_print_individual_imei') ?? true;
+      _barcodeRotationDegrees = prefs.getInt('barcode_rotation_degrees') ?? 0;
+      _barcodeColumns = prefs.getInt('barcode_columns') ?? 2;
     });
+    _syncBarcodeControllersWithValues();
+  }
+
+  void _syncBarcodeControllersWithValues() {
+    _barcodeRollWidthController.text = _barcodePaperWidthMm.toStringAsFixed(1);
+    _barcodeLabelWidthController.text = _barcodeLabelWidthMm.toStringAsFixed(1);
+    _barcodeLabelHeightController.text = _barcodeLabelHeightMm.toStringAsFixed(1);
+    _barcodeHeightController.text = _barcodeHeightMm.toStringAsFixed(1);
+    _barcodeColGapController.text = _barcodeHorizontalGapMm.toStringAsFixed(1);
+    _barcodeRowGapController.text = _barcodeVerticalGapMm.toStringAsFixed(1);
+    _barcodeTopShiftController.text = _barcodeTopShiftMm.toStringAsFixed(1);
+    _barcodeLeftShiftController.text = _barcodeRightShiftMm.toStringAsFixed(1);
+    _barcodeScaleController.text = _barcodeFontScale.toStringAsFixed(2);
   }
 
   Future<void> _saveDeviceLocalPrinterSettings() async {
@@ -901,6 +972,37 @@ class _DashboardScreenState extends State<DashboardScreen> {
       await prefs.setString('local_printer_delivery_note_printer_name', _localDeliveryNotePrinterName!);
     } else {
       await prefs.remove('local_printer_delivery_note_printer_name');
+    }
+    await _saveBarcodeSettings();
+  }
+
+  Future<void> _saveBarcodeSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('barcode_preset', _barcodePreset);
+    await prefs.setString('barcode_paper_format', _barcodePaperFormat);
+    await prefs.setString('barcode_format', _barcodeFormat);
+    await prefs.setString('barcode_printer_type', _barcodePrinterType);
+    await prefs.setDouble('barcode_paper_width_mm', _barcodePaperWidthMm);
+    await prefs.setDouble('barcode_label_width_mm', _barcodeLabelWidthMm);
+    await prefs.setDouble('barcode_label_height_mm', _barcodeLabelHeightMm);
+    await prefs.setDouble('barcode_horizontal_gap_mm', _barcodeHorizontalGapMm);
+    await prefs.setDouble('barcode_vertical_gap_mm', _barcodeVerticalGapMm);
+    await prefs.setDouble('barcode_margin_mm', _barcodeMarginMm);
+    await prefs.setDouble('barcode_right_shift_mm', _barcodeRightShiftMm);
+    await prefs.setDouble('barcode_top_shift_mm', _barcodeTopShiftMm);
+    await prefs.setDouble('barcode_font_scale', _barcodeFontScale);
+    await prefs.setDouble('barcode_height_mm', _barcodeHeightMm);
+    await prefs.setBool('barcode_show_store_name', _barcodeShowStoreName);
+    await prefs.setBool('barcode_show_name', _barcodeShowName);
+    await prefs.setBool('barcode_show_price', _barcodeShowPrice);
+    await prefs.setBool('barcode_show_sku', _barcodeShowSku);
+    await prefs.setBool('barcode_show_code_text', _barcodeShowCodeText);
+    await prefs.setBool('barcode_show_category', _barcodeShowCategory);
+    await prefs.setBool('barcode_print_individual_imei', _barcodePrintIndividualImei);
+    await prefs.setInt('barcode_rotation_degrees', _barcodeRotationDegrees);
+    await prefs.setInt('barcode_columns', _barcodeColumns);
+    if (_localLabelPrinterName != null) {
+      await prefs.setString('local_printer_label_name', _localLabelPrinterName!);
     }
   }
 
@@ -955,6 +1057,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _employeeSearchController.dispose();
     _usersSearchController.dispose();
     _productSearchController.dispose();
+    _posProductSearchFocusNode.dispose();
     _categoriesSearchController.dispose();
     _paymentMethodController.dispose();
     _storeNameController.dispose();
@@ -978,8 +1081,59 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _warrantySearchController.dispose();
     _returnsSearchController.dispose();
     _barcodeSearchController.dispose();
+    _barcodeRollWidthController.dispose();
+    _barcodeLabelWidthController.dispose();
+    _barcodeLabelHeightController.dispose();
+    _barcodeHeightController.dispose();
+    _barcodeColGapController.dispose();
+    _barcodeRowGapController.dispose();
+    _barcodeTopShiftController.dispose();
+    _barcodeLeftShiftController.dispose();
+    _barcodeScaleController.dispose();
     _platformSearchController.dispose();
+    HardwareKeyboard.instance.removeHandler(_handleGlobalHardwareKey);
     super.dispose();
+  }
+
+  bool _handleGlobalHardwareKey(KeyEvent event) {
+    if (event is! KeyDownEvent) return false;
+
+    // Only process hardware scans when on products or POS pages
+    if (_selectedNavKey != 'products' && _selectedNavKey != 'pos') {
+      return false;
+    }
+
+    // Never intercept if an add/edit product dialog or any modal is already active
+    if (_isProductDialogOpen) return false;
+    if (ModalRoute.of(context)?.isCurrent != true) return false;
+
+    final now = DateTime.now();
+    // Barcode scanners deliver key strokes at < 150ms intervals
+    if (now.difference(_lastProductScanTime).inMilliseconds > 200) {
+      _productScanBuffer = '';
+    }
+    _lastProductScanTime = now;
+
+    if (event.logicalKey == LogicalKeyboardKey.enter ||
+        event.logicalKey == LogicalKeyboardKey.numpadEnter) {
+      final scanned = _productScanBuffer.trim();
+      _productScanBuffer = '';
+      if (scanned.length >= 2) {
+        if (_selectedNavKey == 'products') {
+          _handleProductPageBarcodeScan(scanned);
+          return true;
+        } else if (_selectedNavKey == 'pos') {
+          _handleBarcodeOrSearchScan(scanned);
+          return true;
+        }
+      }
+    } else if (event.character != null &&
+        event.character!.isNotEmpty &&
+        event.character!.codeUnitAt(0) >= 32) {
+      _productScanBuffer += event.character!;
+    }
+
+    return false;
   }
 
   Future<void> _enqueueSync(
@@ -4271,106 +4425,240 @@ class _DashboardScreenState extends State<DashboardScreen> {
     setState(() {
       _barcodePreset = presetKey;
       switch (presetKey) {
-        case 'zebra_1col_50x30':
+        case 'zebra_zd230_3col_22mm':
+          _barcodePreset = 'zebra_zd230_3col_22mm';
+          _barcodePrinterType = 'thermal';
           _barcodePaperFormat = 'custom_roll';
-          _barcodeLabelWidthMm = 50;
-          _barcodeLabelHeightMm = 30;
-          _barcodeHorizontalGapMm = 0;
-          _barcodeVerticalGapMm = 2;
-          _barcodeMarginMm = 2;
+          _barcodePaperWidthMm = 101.6;
+          _barcodeLabelWidthMm = 31.8;
+          _barcodeLabelHeightMm = 22.0;
+          _barcodeColumns = 3;
+          _barcodeHorizontalGapMm = 2.0;
+          _barcodeVerticalGapMm = 2.0;
+          _barcodeMarginMm = 1.1;
+          _barcodeRightShiftMm = 0.0;
+          _barcodeTopShiftMm = 3.5;
+          _barcodeHeightMm = 5.0;
+          _barcodeFontScale = 0.85;
           break;
-        case 'zebra_2col_38x25':
-          _barcodePaperFormat = 'custom_roll';
-          _barcodeLabelWidthMm = 38;
-          _barcodeLabelHeightMm = 25;
-          _barcodeHorizontalGapMm = 3;
-          _barcodeVerticalGapMm = 2;
-          _barcodeMarginMm = 2;
-          break;
+        case 'zebra_zd230_3col':
         case 'zebra_3col_32x19':
+          _barcodePreset = 'zebra_zd230_3col';
+          _barcodePrinterType = 'thermal';
           _barcodePaperFormat = 'custom_roll';
-          _barcodeLabelWidthMm = 32;
-          _barcodeLabelHeightMm = 19;
-          _barcodeHorizontalGapMm = 2;
-          _barcodeVerticalGapMm = 2;
-          _barcodeMarginMm = 2;
+          _barcodePaperWidthMm = 101.6;
+          _barcodeLabelWidthMm = 31.75;
+          _barcodeLabelHeightMm = 25.4;
+          _barcodeColumns = 3;
+          _barcodeHorizontalGapMm = 2.0;
+          _barcodeVerticalGapMm = 2.0;
+          _barcodeMarginMm = 1.15;
+          _barcodeRightShiftMm = 0.0;
+          _barcodeTopShiftMm = 0.0;
+          _barcodeHeightMm = 7.5;
+          _barcodeFontScale = 0.90;
           break;
+        case 'zebra_zd230_2col':
+        case 'zebra_2col_38x25':
+          _barcodePreset = 'zebra_zd230_2col';
+          _barcodePrinterType = 'thermal';
+          _barcodePaperFormat = 'custom_roll';
+          _barcodePaperWidthMm = 101.6;
+          _barcodeLabelWidthMm = 48.0;
+          _barcodeLabelHeightMm = 25.4;
+          _barcodeColumns = 2;
+          _barcodeHorizontalGapMm = 2.0;
+          _barcodeVerticalGapMm = 2.0;
+          _barcodeMarginMm = 1.5;
+          _barcodeRightShiftMm = 4.0;
+          _barcodeTopShiftMm = 1.0;
+          _barcodeHeightMm = 8.5;
+          _barcodeFontScale = 0.95;
+          break;
+        case 'zebra_zd230_1col':
+        case 'zebra_1col_50x30':
+          _barcodePreset = 'zebra_zd230_1col';
+          _barcodePrinterType = 'thermal';
+          _barcodePaperFormat = 'custom_roll';
+          _barcodePaperWidthMm = 101.6;
+          _barcodeLabelWidthMm = 98.0;
+          _barcodeLabelHeightMm = 50.0;
+          _barcodeColumns = 1;
+          _barcodeHorizontalGapMm = 0.0;
+          _barcodeVerticalGapMm = 2.0;
+          _barcodeMarginMm = 1.5;
+          _barcodeRightShiftMm = 5.0;
+          _barcodeTopShiftMm = 2.0;
+          break;
+        case 'zebra_generic_3col':
+          _barcodePreset = 'zebra_generic_3col';
+          _barcodePrinterType = 'thermal';
+          _barcodePaperFormat = 'custom_roll';
+          _barcodePaperWidthMm = 76.2;
+          _barcodeLabelWidthMm = 23.0;
+          _barcodeLabelHeightMm = 25.4;
+          _barcodeColumns = 3;
+          _barcodeHorizontalGapMm = 2.0;
+          _barcodeVerticalGapMm = 2.0;
+          _barcodeMarginMm = 1.5;
+          _barcodeRightShiftMm = 5.0;
+          _barcodeTopShiftMm = 2.0;
+          break;
+        case 'dymo_lw_standard':
         case 'dymo_single_54x25':
+          _barcodePreset = 'dymo_lw_standard';
+          _barcodePrinterType = 'thermal';
           _barcodePaperFormat = 'custom_roll';
-          _barcodeLabelWidthMm = 54;
-          _barcodeLabelHeightMm = 25;
-          _barcodeHorizontalGapMm = 0;
-          _barcodeVerticalGapMm = 2;
-          _barcodeMarginMm = 2;
+          _barcodePaperWidthMm = 89.0;
+          _barcodeLabelWidthMm = 89.0;
+          _barcodeLabelHeightMm = 28.0;
+          _barcodeColumns = 1;
+          _barcodeHorizontalGapMm = 0.0;
+          _barcodeVerticalGapMm = 2.0;
+          _barcodeMarginMm = 2.0;
+          _barcodeRightShiftMm = 0.0;
+          _barcodeTopShiftMm = 0.0;
           break;
+        case 'dymo_lw_large':
         case 'dymo_large_89x36':
+          _barcodePreset = 'dymo_lw_large';
+          _barcodePrinterType = 'thermal';
           _barcodePaperFormat = 'custom_roll';
-          _barcodeLabelWidthMm = 89;
-          _barcodeLabelHeightMm = 36;
-          _barcodeHorizontalGapMm = 0;
-          _barcodeVerticalGapMm = 2;
-          _barcodeMarginMm = 2;
+          _barcodePaperWidthMm = 89.0;
+          _barcodeLabelWidthMm = 89.0;
+          _barcodeLabelHeightMm = 36.0;
+          _barcodeColumns = 1;
+          _barcodeHorizontalGapMm = 0.0;
+          _barcodeVerticalGapMm = 2.0;
+          _barcodeMarginMm = 2.0;
+          _barcodeRightShiftMm = 0.0;
+          _barcodeTopShiftMm = 0.0;
           break;
+        case 'brother_ql_29mm':
+          _barcodePreset = 'brother_ql_29mm';
+          _barcodePrinterType = 'thermal';
+          _barcodePaperFormat = 'custom_roll';
+          _barcodePaperWidthMm = 29.0;
+          _barcodeLabelWidthMm = 29.0;
+          _barcodeLabelHeightMm = 30.0;
+          _barcodeColumns = 1;
+          _barcodeHorizontalGapMm = 0.0;
+          _barcodeVerticalGapMm = 2.0;
+          _barcodeMarginMm = 1.0;
+          _barcodeRightShiftMm = 0.0;
+          _barcodeTopShiftMm = 0.0;
+          break;
+        case 'brother_ql_62mm':
         case 'brother_ql_62x29':
+          _barcodePreset = 'brother_ql_62mm';
+          _barcodePrinterType = 'thermal';
           _barcodePaperFormat = 'custom_roll';
-          _barcodeLabelWidthMm = 62;
-          _barcodeLabelHeightMm = 29;
-          _barcodeHorizontalGapMm = 0;
-          _barcodeVerticalGapMm = 2;
-          _barcodeMarginMm = 2;
+          _barcodePaperWidthMm = 62.0;
+          _barcodeLabelWidthMm = 62.0;
+          _barcodeLabelHeightMm = 30.0;
+          _barcodeColumns = 1;
+          _barcodeHorizontalGapMm = 0.0;
+          _barcodeVerticalGapMm = 2.0;
+          _barcodeMarginMm = 1.0;
+          _barcodeRightShiftMm = 0.0;
+          _barcodeTopShiftMm = 0.0;
           break;
+        case 'generic_thermal_1col':
         case 'generic_80mm_roll':
-          _barcodePaperFormat = '80mm';
-          _barcodeLabelWidthMm = 72;
-          _barcodeLabelHeightMm = 30;
-          _barcodeHorizontalGapMm = 0;
-          _barcodeVerticalGapMm = 3;
-          _barcodeMarginMm = 4;
+          _barcodePreset = 'generic_thermal_1col';
+          _barcodePrinterType = 'thermal';
+          _barcodePaperFormat = 'custom_roll';
+          _barcodePaperWidthMm = 80.0;
+          _barcodeLabelWidthMm = 76.0;
+          _barcodeLabelHeightMm = 40.0;
+          _barcodeColumns = 1;
+          _barcodeHorizontalGapMm = 0.0;
+          _barcodeVerticalGapMm = 3.0;
+          _barcodeMarginMm = 2.0;
+          _barcodeRightShiftMm = 0.0;
+          _barcodeTopShiftMm = 0.0;
           break;
+        case 'generic_58mm_1col':
         case 'generic_58mm_roll':
-          _barcodePaperFormat = '58mm';
-          _barcodeLabelWidthMm = 50;
-          _barcodeLabelHeightMm = 25;
-          _barcodeHorizontalGapMm = 0;
-          _barcodeVerticalGapMm = 3;
-          _barcodeMarginMm = 3;
+          _barcodePreset = 'generic_58mm_1col';
+          _barcodePrinterType = 'thermal';
+          _barcodePaperFormat = 'custom_roll';
+          _barcodePaperWidthMm = 58.0;
+          _barcodeLabelWidthMm = 50.0;
+          _barcodeLabelHeightMm = 25.0;
+          _barcodeColumns = 1;
+          _barcodeHorizontalGapMm = 0.0;
+          _barcodeVerticalGapMm = 3.0;
+          _barcodeMarginMm = 2.0;
+          _barcodeRightShiftMm = 0.0;
+          _barcodeTopShiftMm = 0.0;
           break;
+        case 'a4_3col':
         case 'a4_3x10':
+          _barcodePreset = 'a4_3col';
+          _barcodePrinterType = 'regular';
           _barcodePaperFormat = 'A4';
-          _barcodeLabelWidthMm = 64;
-          _barcodeLabelHeightMm = 25;
+          _barcodePaperWidthMm = 210.0;
+          _barcodeLabelWidthMm = 63.5;
+          _barcodeLabelHeightMm = 29.6;
+          _barcodeColumns = 3;
           _barcodeHorizontalGapMm = 2.5;
           _barcodeVerticalGapMm = 2.0;
-          _barcodeMarginMm = 6.0;
+          _barcodeMarginMm = 7.0;
+          _barcodeRightShiftMm = 0.0;
+          _barcodeTopShiftMm = 0.0;
           break;
+        case 'a4_2col':
         case 'a4_2x7':
+          _barcodePreset = 'a4_2col';
+          _barcodePrinterType = 'regular';
           _barcodePaperFormat = 'A4';
-          _barcodeLabelWidthMm = 99;
-          _barcodeLabelHeightMm = 38;
+          _barcodePaperWidthMm = 210.0;
+          _barcodeLabelWidthMm = 99.1;
+          _barcodeLabelHeightMm = 38.1;
+          _barcodeColumns = 2;
           _barcodeHorizontalGapMm = 2.5;
           _barcodeVerticalGapMm = 2.0;
-          _barcodeMarginMm = 8.0;
+          _barcodeMarginMm = 4.7;
+          _barcodeRightShiftMm = 0.0;
+          _barcodeTopShiftMm = 0.0;
           break;
+        case 'a4_4col':
         case 'a4_4x13':
+          _barcodePreset = 'a4_4col';
+          _barcodePrinterType = 'regular';
           _barcodePaperFormat = 'A4';
-          _barcodeLabelWidthMm = 48;
-          _barcodeLabelHeightMm = 21;
+          _barcodePaperWidthMm = 210.0;
+          _barcodeLabelWidthMm = 48.5;
+          _barcodeLabelHeightMm = 21.2;
+          _barcodeColumns = 4;
           _barcodeHorizontalGapMm = 2.0;
           _barcodeVerticalGapMm = 1.5;
-          _barcodeMarginMm = 5.0;
+          _barcodeMarginMm = 4.7;
+          _barcodeRightShiftMm = 0.0;
+          _barcodeTopShiftMm = 0.0;
           break;
+        case 'letter_3col':
         case 'letter_3x10':
+          _barcodePreset = 'letter_3col';
+          _barcodePrinterType = 'regular';
           _barcodePaperFormat = 'Letter';
-          _barcodeLabelWidthMm = 66;
+          _barcodePaperWidthMm = 215.9;
+          _barcodeLabelWidthMm = 66.7;
           _barcodeLabelHeightMm = 25.4;
-          _barcodeHorizontalGapMm = 3.0;
+          _barcodeColumns = 3;
+          _barcodeHorizontalGapMm = 3.2;
           _barcodeVerticalGapMm = 2.0;
-          _barcodeMarginMm = 8.0;
+          _barcodeMarginMm = 4.8;
+          _barcodeRightShiftMm = 0.0;
+          _barcodeTopShiftMm = 0.0;
           break;
         case 'custom':
         default:
           break;
       }
+      _saveBarcodeSettings();
+      _syncBarcodeControllersWithValues();
     });
   }
 
@@ -4405,10 +4693,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
   }
 
-  pw.Widget _buildBarcodeLabel(_BarcodeLabelEntry entry) {
+  pw.Widget _buildBarcodeLabel(_BarcodeLabelEntry entry, {double? maxAllowedHeightMm}) {
     final product = entry.product;
     final width = _barcodeLabelWidthMm * PdfPageFormat.mm;
-    final height = _barcodeLabelHeightMm * PdfPageFormat.mm;
+    final targetHeightMm = maxAllowedHeightMm ?? _barcodeLabelHeightMm;
+    final height = targetHeightMm * PdfPageFormat.mm;
 
     String rawBarcode;
     if (entry.imei != null && entry.imei!.trim().isNotEmpty) {
@@ -4437,9 +4726,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
         break;
       case 'EAN13':
         final digits = barcodeValue.replaceAll(RegExp(r'\D'), '');
-        if (digits.length == 12 || digits.length == 13) {
+        if (digits.length == 12) {
           barcodeWidgetType = pw.Barcode.ean13();
-          barcodeValue = digits.length == 12 ? digits : digits.substring(0, 13);
+          barcodeValue = digits;
+        } else if (digits.length == 13) {
+          try {
+            pw.Barcode.ean13().verify(digits);
+            barcodeWidgetType = pw.Barcode.ean13();
+            barcodeValue = digits;
+          } catch (_) {
+            barcodeWidgetType = pw.Barcode.ean13();
+            barcodeValue = digits.substring(0, 12);
+          }
         } else {
           barcodeWidgetType = pw.Barcode.code128();
         }
@@ -4462,105 +4760,405 @@ class _DashboardScreenState extends State<DashboardScreen> {
         break;
     }
 
+    final isCompact = targetHeightMm <= 26.0;
+    final fontScale = _barcodeFontScale.clamp(0.5, 1.8);
+    final baseFontSize = ((isCompact ? 4.5 : 6.0) * fontScale).clamp(3.2, 9.0);
+    final titleFontSize = ((isCompact ? 5.5 : 8.0) * fontScale).clamp(3.8, 11.0);
+    final priceFontSize = ((isCompact ? 6.5 : 9.0) * fontScale).clamp(4.2, 12.0);
+    final itemSpacing = (isCompact ? 0.3 : 0.8) * PdfPageFormat.mm;
+
+    // Barcode Height: driven directly by user settings, safely clamped to fit sticker
+    final barcodeHeightMm = _barcodeFormat == 'QR'
+        ? _barcodeHeightMm.clamp(4.0, (targetHeightMm * 0.50).clamp(4.0, 30.0))
+        : _barcodeHeightMm.clamp(3.5, (targetHeightMm - 7.5).clamp(3.5, 30.0));
+
     final textWidgets = <pw.Widget>[];
+
+    // Store Name
+    if (_barcodeShowStoreName && _companyName.trim().isNotEmpty) {
+      textWidgets.add(
+        pw.Text(
+          _companyName.trim(),
+          maxLines: 1,
+          overflow: pw.TextOverflow.clip,
+          textAlign: pw.TextAlign.center,
+          style: pw.TextStyle(
+            fontSize: baseFontSize,
+            fontWeight: pw.FontWeight.bold,
+          ),
+        ),
+      );
+      textWidgets.add(pw.SizedBox(height: itemSpacing * 0.5));
+    }
+
+    // Item Name
     if (_barcodeShowName) {
       textWidgets.add(
         pw.Text(
           product.name,
           maxLines: 1,
+          overflow: pw.TextOverflow.clip,
+          textAlign: pw.TextAlign.center,
           style: pw.TextStyle(
-            fontSize: (7.5 * _barcodeFontScale).clamp(5.0, 12.0),
+            fontSize: titleFontSize,
             fontWeight: pw.FontWeight.bold,
           ),
         ),
       );
+      textWidgets.add(pw.SizedBox(height: itemSpacing * 0.6));
     }
 
-    textWidgets.add(
-      pw.Expanded(
-        child: pw.Center(
-          child: pw.BarcodeWidget(
-            barcode: barcodeWidgetType,
-            data: barcodeValue,
-            drawText: false,
-          ),
-        ),
-      ),
-    );
-
-    if (entry.imei != null && entry.imei!.trim().isNotEmpty) {
-      textWidgets.add(
-        pw.Text(
-          'S/N: ${entry.imei}',
-          maxLines: 1,
-          style: pw.TextStyle(
-            fontSize: (6.5 * _barcodeFontScale).clamp(5.0, 10.0),
-            fontWeight: pw.FontWeight.bold,
-          ),
-        ),
-      );
-    } else if (_barcodeShowCodeText) {
-      textWidgets.add(
-        pw.Text(
-          barcodeValue,
-          maxLines: 1,
-          style: pw.TextStyle(
-            fontSize: (6.5 * _barcodeFontScale).clamp(5.0, 10.0),
-          ),
-        ),
-      );
-    }
-
-    if (_barcodeShowSku) {
-      textWidgets.add(
-        pw.Text(
-          'SKU: ${product.id}',
-          maxLines: 1,
-          style: pw.TextStyle(
-            fontSize: (6.0 * _barcodeFontScale).clamp(4.5, 9.0),
-          ),
-        ),
-      );
-    }
-
-    if (_barcodeShowCategory) {
-      textWidgets.add(
-        pw.Text(
-          product.category,
-          maxLines: 1,
-          style: pw.TextStyle(
-            fontSize: (6.0 * _barcodeFontScale).clamp(4.5, 9.0),
-          ),
-        ),
-      );
-    }
-
+    // Price
     if (_barcodeShowPrice) {
       textWidgets.add(
         pw.Text(
           _money(product.price),
           maxLines: 1,
+          textAlign: pw.TextAlign.center,
           style: pw.TextStyle(
-            fontSize: (7.0 * _barcodeFontScale).clamp(5.0, 11.0),
+            fontSize: priceFontSize,
             fontWeight: pw.FontWeight.bold,
+          ),
+        ),
+      );
+      textWidgets.add(pw.SizedBox(height: itemSpacing * 0.6));
+    }
+
+    // Barcode Visual
+    pw.Widget barcodeVisual;
+    try {
+      barcodeVisual = pw.BarcodeWidget(
+        barcode: barcodeWidgetType,
+        data: barcodeValue,
+        drawText: false,
+        color: PdfColors.black,
+      );
+    } catch (_) {
+      barcodeVisual = pw.BarcodeWidget(
+        barcode: pw.Barcode.code128(),
+        data: '12345678',
+        drawText: false,
+        color: PdfColors.black,
+      );
+    }
+
+    if (_barcodeFormat == 'QR') {
+      textWidgets.add(
+        pw.SizedBox(
+          width: barcodeHeightMm * PdfPageFormat.mm,
+          height: barcodeHeightMm * PdfPageFormat.mm,
+          child: barcodeVisual,
+        ),
+      );
+    } else {
+      textWidgets.add(
+        pw.SizedBox(
+          width: (width - 2.0 * PdfPageFormat.mm).clamp(15.0, width),
+          height: barcodeHeightMm * PdfPageFormat.mm,
+          child: barcodeVisual,
+        ),
+      );
+    }
+
+    // IMEI or Barcode Text (Human-readable)
+    if (entry.imei != null && entry.imei!.trim().isNotEmpty) {
+      textWidgets.add(pw.SizedBox(height: itemSpacing * 0.4));
+      textWidgets.add(
+        pw.Text(
+          'S/N: ${entry.imei}',
+          maxLines: 1,
+          style: pw.TextStyle(
+            fontSize: (baseFontSize - 0.2).clamp(3.2, 8.5),
+            fontWeight: pw.FontWeight.bold,
+          ),
+        ),
+      );
+    } else if (_barcodeShowCodeText) {
+      textWidgets.add(pw.SizedBox(height: itemSpacing * 0.4));
+      textWidgets.add(
+        pw.Text(
+          barcodeValue,
+          maxLines: 1,
+          style: pw.TextStyle(
+            fontSize: (baseFontSize - 0.2).clamp(3.2, 8.5),
           ),
         ),
       );
     }
 
-    return pw.Container(
+    // SKU
+    if (_barcodeShowSku) {
+      final skuStr = product.id.trim();
+      if (skuStr.isNotEmpty) {
+        textWidgets.add(pw.SizedBox(height: itemSpacing * 0.3));
+        textWidgets.add(
+          pw.Text(
+            'SKU: $skuStr',
+            maxLines: 1,
+            style: pw.TextStyle(
+              fontSize: (baseFontSize - 0.5).clamp(3.0, 7.5),
+            ),
+          ),
+        );
+      }
+    }
+
+    // Category
+    if (_barcodeShowCategory) {
+      textWidgets.add(pw.SizedBox(height: itemSpacing * 0.3));
+      textWidgets.add(
+        pw.Text(
+          product.category,
+          maxLines: 1,
+          style: pw.TextStyle(
+            fontSize: (baseFontSize - 0.8).clamp(3.0, 7.5),
+          ),
+        ),
+      );
+    }
+
+    final labelBox = pw.Container(
       width: width,
       height: height,
-      padding: const pw.EdgeInsets.all(2.5),
-      decoration: pw.BoxDecoration(
-        border: pw.Border.all(width: 0.5, color: PdfColors.grey500),
+      alignment: pw.Alignment.center,
+      padding: pw.EdgeInsets.symmetric(
+        horizontal: 0.5 * PdfPageFormat.mm,
+        vertical: 0.2 * PdfPageFormat.mm,
       ),
-      child: pw.Column(
-        crossAxisAlignment: pw.CrossAxisAlignment.center,
-        mainAxisAlignment: pw.MainAxisAlignment.center,
-        children: textWidgets,
+      child: pw.FittedBox(
+        fit: pw.BoxFit.scaleDown,
+        alignment: pw.Alignment.center,
+        child: pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.center,
+          mainAxisAlignment: pw.MainAxisAlignment.center,
+          mainAxisSize: pw.MainAxisSize.min,
+          children: textWidgets,
+        ),
       ),
     );
+
+    if (_barcodeRotationDegrees == 180) {
+      return pw.Transform.rotateBox(
+        angle: math.pi,
+        child: labelBox,
+      );
+    } else if (_barcodeRotationDegrees == 90) {
+      return pw.Transform.rotateBox(
+        angle: math.pi / 2,
+        child: labelBox,
+      );
+    } else if (_barcodeRotationDegrees == 270) {
+      return pw.Transform.rotateBox(
+        angle: 3 * math.pi / 2,
+        child: labelBox,
+      );
+    }
+
+    return labelBox;
+  }
+
+  bool _isZebraPrinter(String printerName) {
+    final lower = printerName.toLowerCase();
+    return lower.contains('zebra') ||
+        lower.contains('zdesigner') ||
+        lower.contains('zd230') ||
+        lower.contains('zpl');
+  }
+
+  String _cleanZplText(String s) {
+    return s
+        .replaceAll('^', ' ')
+        .replaceAll('~', ' ')
+        .replaceAll('\\', ' ')
+        .replaceAll('\n', ' ')
+        .replaceAll('\r', ' ')
+        .replaceAll('රු.', 'Rs.')
+        .replaceAll('රු', 'Rs.')
+        .trim();
+  }
+
+  String _buildZplForEntries(List<_BarcodeLabelEntry> entries) {
+    final buffer = StringBuffer();
+    final cols = _barcodeColumns.clamp(1, 10);
+    const dotsPerMm = 8.0; // 203 DPI = 8.0 dots per mm
+    final rollWidthDots = (_barcodePaperWidthMm * dotsPerMm).round();
+    final labelWidthDots = (_barcodeLabelWidthMm * dotsPerMm).round();
+    final labelHeightDots = (_barcodeLabelHeightMm * dotsPerMm).round();
+    final colGapDots = (_barcodeHorizontalGapMm * dotsPerMm).round();
+    final rowGapDots = (_barcodeVerticalGapMm * dotsPerMm).round();
+    final labelPitchDots = labelHeightDots + rowGapDots;
+    final leftShiftDots = (_barcodeRightShiftMm * dotsPerMm).round();
+    final topShiftDots = (_barcodeTopShiftMm * dotsPerMm).round();
+    final scale = _barcodeFontScale.clamp(0.6, 1.5);
+
+    // Total width of all columns including horizontal gaps
+    final totalSpanDots = (cols * labelWidthDots) + ((cols - 1) * colGapDots);
+    final autoMarginDots = totalSpanDots < rollWidthDots
+        ? ((rollWidthDots - totalSpanDots) / 2.0).round()
+        : (_barcodeMarginMm * dotsPerMm).round();
+    final effectiveLeftDots = (autoMarginDots + leftShiftDots).clamp(0, rollWidthDots - labelWidthDots);
+
+    // Calculate vertical content height so everything is centered and never overruns the label
+    final storeH = (_barcodeShowStoreName && _companyName.trim().isNotEmpty) ? (18 * scale).round() : 0;
+    final nameH = _barcodeShowName ? (22 * scale).round() : 0;
+    final priceH = _barcodeShowPrice ? (20 * scale).round() : 0;
+    final barcodeH = (_barcodeHeightMm * dotsPerMm).round().clamp(24, 60);
+    final codeTextH = _barcodeShowCodeText ? (18 * scale).round() : 0;
+    final skuH = _barcodeShowSku ? (18 * scale).round() : 0;
+    final categoryH = _barcodeShowCategory ? (16 * scale).round() : 0;
+
+    int totalContentH = 0;
+    if (storeH > 0) totalContentH += storeH + (2 * scale).round();
+    if (nameH > 0) totalContentH += nameH + (2 * scale).round();
+    if (priceH > 0) totalContentH += priceH + (2 * scale).round();
+    totalContentH += barcodeH + 4;
+    if (codeTextH > 0) totalContentH += codeTextH + (2 * scale).round();
+    if (skuH > 0) totalContentH += skuH + (2 * scale).round();
+    if (categoryH > 0) totalContentH += categoryH + (2 * scale).round();
+
+    // Auto-center content vertically within labelHeightDots
+    final idealTopPad = ((labelHeightDots - totalContentH) / 2.0).round().clamp(4, labelHeightDots);
+    final maxAllowedStart = (labelHeightDots - totalContentH - 2).clamp(2, labelHeightDots);
+    // When user adjusts topShift, apply it directly in layout coordinates (safely clamped)
+    final contentStartY = topShiftDots > 0
+        ? (topShiftDots).clamp(2, maxAllowedStart)
+        : idealTopPad;
+
+    // Ensure printer uses gap tracking and exact label pitch
+    buffer.writeln('! U1 setvar "media.sense_mode" "gap"');
+    buffer.writeln('! U1 setvar "zpl.label_length_always" "yes"');
+    buffer.writeln('! U1 setvar "zpl.label_length" "$labelPitchDots"');
+
+    for (int i = 0; i < entries.length; i += cols) {
+      final rowEntries = entries.skip(i).take(cols).toList();
+      buffer.writeln('^XA');
+      buffer.writeln('^PW$rollWidthDots');
+      buffer.writeln('^LL$labelPitchDots,Y');
+      buffer.writeln('^LT0'); // Reset hardware label top so format strictly stays on current label
+      buffer.writeln('^MNY'); // Media Sense: Gap / Web
+      buffer.writeln('^LH0,0');
+
+      for (int c = 0; c < rowEntries.length; c++) {
+        final entry = rowEntries[c];
+        final colX = effectiveLeftDots + (c * (labelWidthDots + colGapDots));
+        int currY = contentStartY;
+
+        // Store Name
+        if (storeH > 0) {
+          final w = (16 * scale).round();
+          buffer.writeln('^FO$colX,$currY^FB$labelWidthDots,1,0,C^A0N,$storeH,$w^FD${_cleanZplText(_companyName.trim())}^FS');
+          currY += storeH + (2 * scale).round();
+        }
+
+        // Product Name
+        if (nameH > 0) {
+          final w = (20 * scale).round();
+          buffer.writeln('^FO$colX,$currY^FB$labelWidthDots,1,0,C^A0N,$nameH,$w^FD${_cleanZplText(entry.product.name)}^FS');
+          currY += nameH + (2 * scale).round();
+        }
+
+        // Price
+        if (priceH > 0) {
+          final w = (18 * scale).round();
+          buffer.writeln('^FO$colX,$currY^FB$labelWidthDots,1,0,C^A0N,$priceH,$w^FD${_cleanZplText(_money(entry.product.price))}^FS');
+          currY += priceH + (2 * scale).round();
+        }
+
+        // Barcode
+        final rawBarcode = entry.imei != null && entry.imei!.trim().isNotEmpty
+            ? entry.imei!.trim()
+            : (entry.product.barcode.trim().isEmpty ? entry.product.id.trim() : entry.product.barcode.trim());
+        final narrowBar = labelWidthDots > 280 ? 2 : 1;
+        final estBarcodeDots = (rawBarcode.length + 3) * 11 * narrowBar + 35;
+        final barcodeOffsetX = ((labelWidthDots - estBarcodeDots) / 2).round().clamp(5, labelWidthDots - 20);
+        final barcodeX = colX + barcodeOffsetX;
+        buffer.writeln('^FO$barcodeX,$currY^BY$narrowBar,2.5,$barcodeH^BCN,$barcodeH,N,N,N^FD$rawBarcode^FS');
+        currY += barcodeH + 4;
+
+        // Human-readable Barcode Text / IMEI
+        if (entry.imei != null && entry.imei!.trim().isNotEmpty) {
+          final h = (18 * scale).round();
+          final w = (16 * scale).round();
+          buffer.writeln('^FO$colX,$currY^FB$labelWidthDots,1,0,C^A0N,$h,$w^FDS/N: ${_cleanZplText(entry.imei!.trim())}^FS');
+          currY += h + (2 * scale).round();
+        } else if (codeTextH > 0) {
+          final w = (16 * scale).round();
+          buffer.writeln('^FO$colX,$currY^FB$labelWidthDots,1,0,C^A0N,$codeTextH,$w^FD${_cleanZplText(rawBarcode)}^FS');
+          currY += codeTextH + (2 * scale).round();
+        }
+
+        // SKU
+        if (skuH > 0 && entry.product.id.trim().isNotEmpty) {
+          final w = (16 * scale).round();
+          buffer.writeln('^FO$colX,$currY^FB$labelWidthDots,1,0,C^A0N,$skuH,$w^FDSKU: ${_cleanZplText(entry.product.id.trim())}^FS');
+          currY += skuH + (2 * scale).round();
+        }
+
+        // Category
+        if (categoryH > 0 && entry.product.category.trim().isNotEmpty) {
+          final w = (14 * scale).round();
+          buffer.writeln('^FO$colX,$currY^FB$labelWidthDots,1,0,C^A0N,$categoryH,$w^FD${_cleanZplText(entry.product.category.trim())}^FS');
+        }
+      }
+      buffer.writeln('^XZ');
+    }
+
+    return buffer.toString();
+  }
+
+  Future<bool> _printBarcodeEntriesViaZpl(String printerName, String zplContent) async {
+    if (!Platform.isWindows) return false;
+
+    final possibleExePaths = [
+      'windows\\rawprint.exe',
+      '${File(Platform.resolvedExecutable).parent.path}\\rawprint.exe',
+      r'd:\bizpark\cloude_pos\store_buddy_pos\windows\rawprint.exe',
+      r'D:\bizpark\cloude_pos\store_buddy_pos\build\windows\x64\runner\Debug\rawprint.exe',
+    ];
+
+    String? exePath;
+    for (final p in possibleExePaths) {
+      if (File(p).existsSync()) {
+        exePath = p;
+        break;
+      }
+    }
+
+    final tempDir = Directory.systemTemp;
+    final tempFile = File('${tempDir.path}\\sb_label_${DateTime.now().millisecondsSinceEpoch}.zpl');
+    await tempFile.writeAsString(zplContent, encoding: utf8);
+
+    if (exePath != null) {
+      try {
+        final res = await Process.run(exePath, [printerName, tempFile.path]);
+        if (res.exitCode == 0) {
+          try { await tempFile.delete(); } catch (_) {}
+          return true;
+        }
+      } catch (e) {
+        debugPrint('rawprint.exe failed: $e');
+      }
+    }
+
+    try {
+      final psScript = File('${tempDir.path}\\sb_raw_${DateTime.now().millisecondsSinceEpoch}.ps1');
+      await psScript.writeAsString('''
+      [System.IO.File]::ReadAllBytes("${tempFile.path.replaceAll(r'\', r'\\')}") | Out-Printer -Name "$printerName"
+      ''');
+      final res = await Process.run('powershell', [
+        '-NoProfile',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-File',
+        psScript.path,
+      ]);
+      try { await psScript.delete(); } catch (_) {}
+      try { await tempFile.delete(); } catch (_) {}
+      return res.exitCode == 0;
+    } catch (_) {}
+
+    try { await tempFile.delete(); } catch (_) {}
+    return false;
   }
 
   Future<void> _printBarcodeEntries(List<_BarcodeLabelEntry> entries) async {
@@ -4572,28 +5170,125 @@ class _DashboardScreenState extends State<DashboardScreen> {
       return;
     }
 
+    // Direct native ZPL printing for Zebra thermal label printers
+    if (Platform.isWindows && _localLabelPrinterName != null && _localLabelPrinterName!.trim().isNotEmpty) {
+      final targetName = _localLabelPrinterName!.trim();
+      if (_isZebraPrinter(targetName)) {
+        try {
+          final zpl = _buildZplForEntries(entries);
+          final zplSuccess = await _printBarcodeEntriesViaZpl(targetName, zpl);
+          if (zplSuccess) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Labels printed directly via ZPL to $targetName!'),
+                  backgroundColor: const Color(0xFF10B981),
+                ),
+              );
+            }
+            return;
+          }
+        } catch (zplErr) {
+          debugPrint('ZPL printing error, falling back to PDF: $zplErr');
+        }
+      }
+    }
+
     try {
       final doc = pw.Document();
-      final isRoll = _barcodePaperFormat == 'custom_roll';
+      final isThermal = _barcodePrinterType == 'thermal' ||
+          _barcodePaperFormat == 'custom_roll' ||
+          _barcodePaperFormat == '58mm' ||
+          _barcodePaperFormat == '80mm';
 
-      if (isRoll) {
-        final pageFormat = PdfPageFormat(
-          (_barcodeLabelWidthMm + 2) * PdfPageFormat.mm,
-          (_barcodeLabelHeightMm + 2) * PdfPageFormat.mm,
-          marginAll: 1 * PdfPageFormat.mm,
+      PdfPageFormat targetPageFormat;
+
+      if (isThermal) {
+        // Multi-column or 1-column thermal roll (e.g. Zebra ZD230, Dymo, Brother)
+        final cols = _barcodeColumns.clamp(1, 10);
+        final gap = _barcodeHorizontalGapMm;
+        final margin = _barcodeMarginMm;
+        final leftShiftMm = _barcodeRightShiftMm;
+        final topShiftMm = _barcodeTopShiftMm;
+
+        final pageWidth = _barcodePaperWidthMm;
+        // On die-cut thermal label rolls (Zebra ZD230), targetPageFormat height MUST BE the sticker height (_barcodeLabelHeightMm)
+        // Never add vertical gap to page format height, because the physical sensor stops at the sticker edge.
+        // Adding gap makes Zebra advance into the next label row, missing a row completely!
+        final pageHeight = _barcodeLabelHeightMm;
+
+        // Auto-center horizontal margin if base span fits within roll width
+        final baseColumnsWidth = (cols * _barcodeLabelWidthMm) + ((cols - 1) * gap);
+        final computedMargin = baseColumnsWidth < pageWidth
+            ? ((pageWidth - baseColumnsWidth) / 2.0).clamp(0.0, 20.0)
+            : margin;
+        final effectiveLeft = (computedMargin + leftShiftMm).clamp(0.0, (pageWidth - _barcodeLabelWidthMm).clamp(0.0, pageWidth));
+
+        // CRITICAL FOR THERMAL ROLL LABELS (e.g. Zebra ZD230 22mm die-cut rolls):
+        // Top shift must be strictly clamped to <= 1.5mm so it never pushes content past the 22mm page boundary.
+        // Overrunning the page boundary causes the Zebra driver to feed past the gap sensor into the next row,
+        // which skips a label row completely!
+        final safeTopShift = topShiftMm.clamp(0.0, 8.0);
+        final effectiveTop = safeTopShift;
+        final effectiveLabelHeight = (pageHeight - effectiveTop).clamp(8.0, pageHeight);
+
+        targetPageFormat = PdfPageFormat(
+          pageWidth * PdfPageFormat.mm,
+          pageHeight * PdfPageFormat.mm,
         );
-        for (final entry in entries) {
+
+        for (int i = 0; i < entries.length; i += cols) {
+          final rowEntries = entries.skip(i).take(cols).toList();
+
           doc.addPage(
             pw.Page(
-              pageFormat: pageFormat,
-              build: (_) => pw.Center(child: _buildBarcodeLabel(entry)),
+              pageFormat: targetPageFormat,
+              margin: pw.EdgeInsets.zero,
+              build: (pw.Context context) {
+                return pw.Container(
+                  width: pageWidth * PdfPageFormat.mm,
+                  height: pageHeight * PdfPageFormat.mm,
+                  child: pw.Padding(
+                    padding: pw.EdgeInsets.only(
+                      left: effectiveLeft * PdfPageFormat.mm,
+                      top: effectiveTop * PdfPageFormat.mm,
+                    ),
+                    child: pw.Row(
+                      mainAxisSize: pw.MainAxisSize.min,
+                      crossAxisAlignment: pw.CrossAxisAlignment.center,
+                      children: [
+                        for (int j = 0; j < cols; j++) ...[
+                          if (j > 0) pw.SizedBox(width: gap * PdfPageFormat.mm),
+                          if (j < rowEntries.length)
+                            pw.Container(
+                              width: _barcodeLabelWidthMm * PdfPageFormat.mm,
+                              height: effectiveLabelHeight * PdfPageFormat.mm,
+                              alignment: pw.Alignment.center,
+                              child: _buildBarcodeLabel(
+                                rowEntries[j],
+                                maxAllowedHeightMm: effectiveLabelHeight,
+                              ),
+                            )
+                          else
+                            pw.SizedBox(
+                              width: _barcodeLabelWidthMm * PdfPageFormat.mm,
+                              height: effectiveLabelHeight * PdfPageFormat.mm,
+                            ),
+                        ],
+                      ],
+                    ),
+                  ),
+                );
+              },
             ),
           );
         }
       } else {
+        // Sheet printer (A4 / Letter)
+        targetPageFormat = _barcodePageFormat();
         doc.addPage(
           pw.MultiPage(
-            pageFormat: _barcodePageFormat(),
+            pageFormat: targetPageFormat,
             margin: pw.EdgeInsets.all(_barcodeMarginMm * PdfPageFormat.mm),
             build: (_) => [
               pw.Wrap(
@@ -4629,27 +5324,38 @@ class _DashboardScreenState extends State<DashboardScreen> {
         }
 
         if (match != null) {
-          final result = await Printing.directPrintPdf(
-            printer: match,
-            onLayout: (_) async => pdfBytes,
-          );
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  result
-                      ? 'Labels printed directly to ${match.name}!'
-                      : 'Print job queued for ${match.name}',
-                ),
-                backgroundColor: const Color(0xFF10B981),
-              ),
+          try {
+            final result = await Printing.directPrintPdf(
+              printer: match,
+              onLayout: (_) async => pdfBytes,
+              name: 'Product Labels',
+              format: targetPageFormat,
+              usePrinterSettings: true,
             );
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    result
+                        ? 'Labels printed directly to ${match.name}!'
+                        : 'Print job queued for ${match.name}',
+                  ),
+                  backgroundColor: const Color(0xFF10B981),
+                ),
+              );
+            }
+            return;
+          } catch (directErr) {
+            debugPrint('Direct printing failed: $directErr. Opening standard print dialog.');
           }
-          return;
         }
       }
 
-      await Printing.layoutPdf(onLayout: (_) async => pdfBytes);
+      await Printing.layoutPdf(
+        onLayout: (_) async => pdfBytes,
+        name: 'Product Labels',
+        format: targetPageFormat,
+      );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -4659,6 +5365,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
       );
     }
+  }
+
+  Future<void> _testPrintSampleBarcodeLabel() async {
+    final sampleProd = _products.isNotEmpty
+        ? _products.first
+        : _ProductItem(
+            id: 'PROD-001',
+            name: 'Sample Retail Product',
+            category: 'Retail',
+            barcode: '123456789012',
+            price: 1500.0,
+            stock: 25,
+            minStock: 5,
+          );
+    final count = (_barcodePrinterType == 'thermal' && _barcodeColumns > 1) ? _barcodeColumns : 1;
+    final entries = List.generate(count, (_) => _BarcodeLabelEntry(product: sampleProd));
+    await _printBarcodeEntries(entries);
   }
 
   Future<void> _printBarcodeLabels(List<_ProductItem> labels) async {
@@ -7730,9 +8453,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<domain.PrintSettingsModel> _currentPrintSettings() async {
-    final rawSettings = await _appDatabase!.getPrintSettings(
-      _activeTenantId ?? 'local',
-    );
+    db.PrintSetting? rawSettings;
+    try {
+      if (_appDatabase != null) {
+        rawSettings = await _appDatabase!.getPrintSettings(
+          _activeTenantId ?? 'local',
+        );
+      }
+    } catch (e) {
+      debugPrint('Failed to load raw print settings: $e');
+    }
     final effectivePaper = _localReceiptPaperSize.isNotEmpty
         ? _localReceiptPaperSize
         : (rawSettings?.paperSize ?? '80mm');

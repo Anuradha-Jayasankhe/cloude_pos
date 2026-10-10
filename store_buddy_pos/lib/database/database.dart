@@ -618,10 +618,18 @@ class AppDatabase extends _$AppDatabase {
   // Print settings operations
   // ---------------------------------------------------------------------------
 
-  Future<PrintSetting?> getPrintSettings(String tenantId) => (select(
-    printSettings,
-  )..where((p) => p.tenantId.equals(tenantId))).getSingleOrNull();
+  Future<PrintSetting?> getPrintSettings(String tenantId) async {
+    final rows = await (select(printSettings)
+          ..where((p) => p.tenantId.equals(tenantId))
+          ..orderBy([(p) => OrderingTerm.desc(p.updatedAt)]))
+        .get();
+    return rows.isEmpty ? null : rows.first;
+  }
 
-  Future<int> upsertPrintSettings(PrintSettingsCompanion settings) =>
-      into(printSettings).insert(settings, mode: InsertMode.insertOrReplace);
+  Future<int> upsertPrintSettings(PrintSettingsCompanion settings) async {
+    final tenant = settings.tenantId.value;
+    // Clean up any duplicates for this tenant to ensure a clean 1-to-1 mapping
+    await (delete(printSettings)..where((p) => p.tenantId.equals(tenant))).go();
+    return into(printSettings).insert(settings);
+  }
 }

@@ -106,198 +106,212 @@ class _PrintSettingsContentState extends State<PrintSettingsContent> {
 
   Future<void> _loadSettings() async {
     setState(() => _loading = true);
-    final prefs = await SharedPreferences.getInstance();
+    try {
+      final prefs = await SharedPreferences.getInstance();
 
-    // 1. Device-Local Hardware Settings
-    final savedReceiptPrinter = prefs.getString('local_printer_receipt_name');
-    _printerNameController.text = savedReceiptPrinter ?? '';
-    _labelPrinterController.text = prefs.getString('local_printer_label_name') ?? '';
-    _paperSize = prefs.getString('local_printer_paper_size') ?? 'thermal_80';
-    final paperWidth = prefs.getDouble('local_printer_paper_width_mm') ?? 72.0;
-    _customPaperWidthController.text = paperWidth.toInt().toString();
-    final marginV = prefs.getDouble('local_printer_margin_v_mm') ?? 3.0;
-    final marginH = prefs.getDouble('local_printer_margin_h_mm') ?? 2.0;
-    _marginVMmController.text = marginV.toString();
-    _marginHMmController.text = marginH.toString();
-    _autoPrint = prefs.getBool('local_printer_auto_print') ?? false;
-    _promptDeliveryLabel = prefs.getBool('local_printer_prompt_delivery_label') ?? false;
-    _deliveryNoteFormat = prefs.getString('local_printer_delivery_note_format') ?? 'THERMAL_80MM';
-    _deliveryNotePrinterController.text = prefs.getString('local_printer_delivery_note_printer_name') ?? '';
+      // 1. Device-Local Hardware Settings
+      final savedReceiptPrinter = prefs.getString('local_printer_receipt_name');
+      _printerNameController.text = savedReceiptPrinter ?? '';
+      _labelPrinterController.text = prefs.getString('local_printer_label_name') ?? '';
+      _paperSize = prefs.getString('local_printer_paper_size') ?? 'thermal_80';
+      final paperWidth = prefs.getDouble('local_printer_paper_width_mm') ?? 72.0;
+      _customPaperWidthController.text = paperWidth.toInt().toString();
+      final marginV = prefs.getDouble('local_printer_margin_v_mm') ?? 3.0;
+      final marginH = prefs.getDouble('local_printer_margin_h_mm') ?? 2.0;
+      _marginVMmController.text = marginV.toString();
+      _marginHMmController.text = marginH.toString();
+      _autoPrint = prefs.getBool('local_printer_auto_print') ?? false;
+      _promptDeliveryLabel = prefs.getBool('local_printer_prompt_delivery_label') ?? false;
+      _deliveryNoteFormat = prefs.getString('local_printer_delivery_note_format') ?? 'THERMAL_80MM';
+      _deliveryNotePrinterController.text = prefs.getString('local_printer_delivery_note_printer_name') ?? '';
 
-    // 2. Device-Local Cash Drawer
-    _cashDrawerEnabled = prefs.getBool('local_cash_drawer_enabled') ?? true;
-    _cashDrawerPrinterName = prefs.getString('local_cash_drawer_printer_name');
-    _cashDrawerMethod = prefs.getString('local_cash_drawer_method') ?? 'print_job';
-    _cashDrawerPulsePin = prefs.getInt('local_cash_drawer_pulse_pin') ?? 0;
-    _cashDrawerPulseOnMs = prefs.getInt('local_cash_drawer_pulse_on_ms') ?? 120;
-    _cashDrawerPulseOffMs = prefs.getInt('local_cash_drawer_pulse_off_ms') ?? 240;
-    _cashDrawerNetworkIpController.text = prefs.getString('local_cash_drawer_network_ip') ?? '';
-    _cashDrawerNetworkPortController.text = (prefs.getInt('local_cash_drawer_network_port') ?? 9100).toString();
+      // 2. Device-Local Cash Drawer
+      _cashDrawerEnabled = prefs.getBool('local_cash_drawer_enabled') ?? true;
+      _cashDrawerPrinterName = prefs.getString('local_cash_drawer_printer_name');
+      _cashDrawerMethod = prefs.getString('local_cash_drawer_method') ?? 'print_job';
+      _cashDrawerPulsePin = prefs.getInt('local_cash_drawer_pulse_pin') ?? 0;
+      _cashDrawerPulseOnMs = prefs.getInt('local_cash_drawer_pulse_on_ms') ?? 120;
+      _cashDrawerPulseOffMs = prefs.getInt('local_cash_drawer_pulse_off_ms') ?? 240;
+      _cashDrawerNetworkIpController.text = prefs.getString('local_cash_drawer_network_ip') ?? '';
+      _cashDrawerNetworkPortController.text = (prefs.getInt('local_cash_drawer_network_port') ?? 9100).toString();
 
-    // 3. Bill Structure Toggles from prefs / database
-    _showShopHeader = prefs.getBool('bill_show_shop_header') ?? true;
-    _showSlogan = prefs.getBool('bill_show_slogan') ?? false;
-    _sloganController.text = prefs.getString('bill_invoice_slogan') ?? '';
-    _showInvoiceNumber = prefs.getBool('bill_show_invoice_no') ?? true;
-    _invoicePrefixController.text = prefs.getString('bill_invoice_prefix') ?? 'INV-';
-    _showDateTime = prefs.getBool('bill_show_date_time') ?? true;
-    _showCashierName = prefs.getBool('bill_show_cashier') ?? true;
-    _showCustomerName = prefs.getBool('bill_show_customer') ?? true;
-    _showCustomerAddress = prefs.getBool('bill_show_customer_address') ?? false;
-    _showItemTable = prefs.getBool('bill_show_item_table') ?? true;
-    _showItemNumbers = prefs.getBool('bill_show_item_numbers') ?? true;
-    _showSubtotal = prefs.getBool('bill_show_subtotal') ?? true;
-    _showDiscount = prefs.getBool('bill_show_discount') ?? true;
-    _showTax = prefs.getBool('bill_show_tax') ?? true;
-    _showTotal = prefs.getBool('bill_show_total') ?? true;
-    _showPaymentDetails = prefs.getBool('bill_show_payment_details') ?? true;
-    _showTerms = prefs.getBool('bill_show_terms') ?? false;
-    _termsController.text = prefs.getString('bill_invoice_terms') ?? '';
-    _showFooter = prefs.getBool('bill_show_footer') ?? true;
+      // 3. Bill Structure Toggles from prefs / database
+      _showShopHeader = prefs.getBool('bill_show_shop_header') ?? true;
+      _showSlogan = prefs.getBool('bill_show_slogan') ?? false;
+      _sloganController.text = prefs.getString('bill_invoice_slogan') ?? '';
+      _showInvoiceNumber = prefs.getBool('bill_show_invoice_no') ?? true;
+      _invoicePrefixController.text = prefs.getString('bill_invoice_prefix') ?? 'INV-';
+      _showDateTime = prefs.getBool('bill_show_date_time') ?? true;
+      _showCashierName = prefs.getBool('bill_show_cashier') ?? true;
+      _showCustomerName = prefs.getBool('bill_show_customer') ?? true;
+      _showCustomerAddress = prefs.getBool('bill_show_customer_address') ?? false;
+      _showItemTable = prefs.getBool('bill_show_item_table') ?? true;
+      _showItemNumbers = prefs.getBool('bill_show_item_numbers') ?? true;
+      _showSubtotal = prefs.getBool('bill_show_subtotal') ?? true;
+      _showDiscount = prefs.getBool('bill_show_discount') ?? true;
+      _showTax = prefs.getBool('bill_show_tax') ?? true;
+      _showTotal = prefs.getBool('bill_show_total') ?? true;
+      _showPaymentDetails = prefs.getBool('bill_show_payment_details') ?? true;
+      _showTerms = prefs.getBool('bill_show_terms') ?? false;
+      _termsController.text = prefs.getString('bill_invoice_terms') ?? '';
+      _showFooter = prefs.getBool('bill_show_footer') ?? true;
 
-    // 4. Database Print Settings
-    final existing = await widget.appDatabase.getPrintSettings(widget.tenantId);
-    if (existing != null) {
-      _settings = existing;
-      _printerType = existing.printerType;
-      _invoiceTemplate = existing.invoiceTemplate;
-      _showLogo = existing.showLogo;
-      _showBarcode = existing.showBarcode;
-      _showQr = existing.showQr;
-      _fontSize = existing.fontSize;
-      _lineSpacing = existing.lineSpacing;
-      _thankYouController.text = existing.thankYouMessage;
-      _returnPolicyController.text = existing.returnPolicy ?? '';
-      _socialLinksController.text = existing.socialLinks ?? '';
-    } else {
-      _thankYouController.text = 'Thank you for your business!';
+      // 4. Database Print Settings
+      final existing = await widget.appDatabase.getPrintSettings(widget.tenantId);
+      if (existing != null) {
+        _settings = existing;
+        _printerType = existing.printerType;
+        _invoiceTemplate = existing.invoiceTemplate;
+        _showLogo = existing.showLogo;
+        _showBarcode = existing.showBarcode;
+        _showQr = existing.showQr;
+        _fontSize = existing.fontSize;
+        _lineSpacing = existing.lineSpacing;
+        _thankYouController.text = existing.thankYouMessage;
+        _returnPolicyController.text = existing.returnPolicy ?? '';
+        _socialLinksController.text = existing.socialLinks ?? '';
+      } else {
+        _thankYouController.text = 'Thank you for your business!';
+      }
+    } catch (e, st) {
+      debugPrint('Error loading print settings: $e\n$st');
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
-
-    if (mounted) setState(() => _loading = false);
   }
 
   Future<void> _saveSettings() async {
-    final prefs = await SharedPreferences.getInstance();
+    try {
+      final prefs = await SharedPreferences.getInstance();
 
-    // 1. Save Device-Local Hardware Settings
-    final receiptPrinter = _printerNameController.text.trim();
-    if (receiptPrinter.isNotEmpty) {
-      await prefs.setString('local_printer_receipt_name', receiptPrinter);
-    } else {
-      await prefs.remove('local_printer_receipt_name');
+      // 1. Save Device-Local Hardware Settings
+      final receiptPrinter = _printerNameController.text.trim();
+      if (receiptPrinter.isNotEmpty) {
+        await prefs.setString('local_printer_receipt_name', receiptPrinter);
+      } else {
+        await prefs.remove('local_printer_receipt_name');
+      }
+      final labelPrinter = _labelPrinterController.text.trim();
+      if (labelPrinter.isNotEmpty) {
+        await prefs.setString('local_printer_label_name', labelPrinter);
+      } else {
+        await prefs.remove('local_printer_label_name');
+      }
+
+      await prefs.setString('local_printer_paper_size', _paperSize);
+      final customW = double.tryParse(_customPaperWidthController.text.trim()) ?? 72.0;
+      await prefs.setDouble('local_printer_paper_width_mm', customW);
+      final marginV = double.tryParse(_marginVMmController.text.trim()) ?? 3.0;
+      final marginH = double.tryParse(_marginHMmController.text.trim()) ?? 2.0;
+      await prefs.setDouble('local_printer_margin_v_mm', marginV);
+      await prefs.setDouble('local_printer_margin_h_mm', marginH);
+      await prefs.setBool('local_printer_auto_print', _autoPrint);
+      await prefs.setBool('local_printer_prompt_delivery_label', _promptDeliveryLabel);
+      await prefs.setString('local_printer_delivery_note_format', _deliveryNoteFormat);
+      final deliveryNotePrinter = _deliveryNotePrinterController.text.trim();
+      if (deliveryNotePrinter.isNotEmpty) {
+        await prefs.setString('local_printer_delivery_note_printer_name', deliveryNotePrinter);
+      } else {
+        await prefs.remove('local_printer_delivery_note_printer_name');
+      }
+
+      // 2. Save Device-Local Cash Drawer Settings
+      await prefs.setBool('local_cash_drawer_enabled', _cashDrawerEnabled);
+      if (_cashDrawerPrinterName != null && _cashDrawerPrinterName!.isNotEmpty) {
+        await prefs.setString('local_cash_drawer_printer_name', _cashDrawerPrinterName!);
+      } else {
+        await prefs.remove('local_cash_drawer_printer_name');
+      }
+      await prefs.setString('local_cash_drawer_method', _cashDrawerMethod);
+      await prefs.setInt('local_cash_drawer_pulse_pin', _cashDrawerPulsePin);
+      await prefs.setInt('local_cash_drawer_pulse_on_ms', _cashDrawerPulseOnMs);
+      await prefs.setInt('local_cash_drawer_pulse_off_ms', _cashDrawerPulseOffMs);
+      await prefs.setString('local_cash_drawer_network_ip', _cashDrawerNetworkIpController.text.trim());
+      await prefs.setInt(
+        'local_cash_drawer_network_port',
+        int.tryParse(_cashDrawerNetworkPortController.text.trim()) ?? 9100,
+      );
+
+      // 3. Save Bill Structure Toggles
+      await prefs.setBool('bill_show_shop_header', _showShopHeader);
+      await prefs.setBool('bill_show_slogan', _showSlogan);
+      await prefs.setString('bill_invoice_slogan', _sloganController.text.trim());
+      await prefs.setBool('bill_show_invoice_no', _showInvoiceNumber);
+      await prefs.setString('bill_invoice_prefix', _invoicePrefixController.text.trim());
+      await prefs.setBool('bill_show_date_time', _showDateTime);
+      await prefs.setBool('bill_show_cashier', _showCashierName);
+      await prefs.setBool('bill_show_customer', _showCustomerName);
+      await prefs.setBool('bill_show_customer_address', _showCustomerAddress);
+      await prefs.setBool('bill_show_item_table', _showItemTable);
+      await prefs.setBool('bill_show_item_numbers', _showItemNumbers);
+      await prefs.setBool('bill_show_subtotal', _showSubtotal);
+      await prefs.setBool('bill_show_discount', _showDiscount);
+      await prefs.setBool('bill_show_tax', _showTax);
+      await prefs.setBool('bill_show_total', _showTotal);
+      await prefs.setBool('bill_show_payment_details', _showPaymentDetails);
+      await prefs.setBool('bill_show_terms', _showTerms);
+      await prefs.setString('bill_invoice_terms', _termsController.text.trim());
+      await prefs.setBool('bill_show_footer', _showFooter);
+
+      // 4. Save to Database
+      final companion = db.PrintSettingsCompanion(
+        id: Value(
+          _settings?.id ?? DateTime.now().millisecondsSinceEpoch.toString(),
+        ),
+        tenantId: Value(widget.tenantId),
+        paperSize: Value(_paperSize),
+        printerName: Value(receiptPrinter.isNotEmpty ? receiptPrinter : null),
+        printerType: Value(_printerType),
+        invoiceTemplate: Value(_invoiceTemplate),
+        autoPrint: Value(_autoPrint),
+        showLogo: Value(_showLogo),
+        showBarcode: Value(_showBarcode),
+        showQr: Value(_showQr),
+        showTax: Value(_showTax),
+        showDiscount: Value(_showDiscount),
+        showCustomerAddress: Value(_showCustomerAddress),
+        marginTop: Value(marginV),
+        marginLeft: Value(marginH),
+        fontSize: Value(_fontSize),
+        lineSpacing: Value(_lineSpacing),
+        thankYouMessage: Value(_thankYouController.text.trim()),
+        returnPolicy: Value(
+          _returnPolicyController.text.trim().isEmpty
+              ? null
+              : _returnPolicyController.text.trim(),
+        ),
+        socialLinks: Value(
+          _socialLinksController.text.trim().isEmpty
+              ? null
+              : _socialLinksController.text.trim(),
+        ),
+        updatedAt: Value(DateTime.now()),
+      );
+
+      await widget.appDatabase.upsertPrintSettings(companion);
+
+      // Also update parent dashboard state if mounted
+      final dashState = context.findAncestorStateOfType<_DashboardScreenState>();
+      if (dashState != null) {
+        await dashState._loadDeviceLocalPrinterSettings();
+      }
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('POS Print & Hardware Settings Saved Successfully!'),
+          backgroundColor: Color(0xFF10B981),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to save print settings: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
-    final labelPrinter = _labelPrinterController.text.trim();
-    if (labelPrinter.isNotEmpty) {
-      await prefs.setString('local_printer_label_name', labelPrinter);
-    } else {
-      await prefs.remove('local_printer_label_name');
-    }
-
-    await prefs.setString('local_printer_paper_size', _paperSize);
-    final customW = double.tryParse(_customPaperWidthController.text.trim()) ?? 72.0;
-    await prefs.setDouble('local_printer_paper_width_mm', customW);
-    final marginV = double.tryParse(_marginVMmController.text.trim()) ?? 3.0;
-    final marginH = double.tryParse(_marginHMmController.text.trim()) ?? 2.0;
-    await prefs.setDouble('local_printer_margin_v_mm', marginV);
-    await prefs.setDouble('local_printer_margin_h_mm', marginH);
-    await prefs.setBool('local_printer_auto_print', _autoPrint);
-    await prefs.setBool('local_printer_prompt_delivery_label', _promptDeliveryLabel);
-    await prefs.setString('local_printer_delivery_note_format', _deliveryNoteFormat);
-    final deliveryNotePrinter = _deliveryNotePrinterController.text.trim();
-    if (deliveryNotePrinter.isNotEmpty) {
-      await prefs.setString('local_printer_delivery_note_printer_name', deliveryNotePrinter);
-    } else {
-      await prefs.remove('local_printer_delivery_note_printer_name');
-    }
-
-    // 2. Save Device-Local Cash Drawer Settings
-    await prefs.setBool('local_cash_drawer_enabled', _cashDrawerEnabled);
-    if (_cashDrawerPrinterName != null && _cashDrawerPrinterName!.isNotEmpty) {
-      await prefs.setString('local_cash_drawer_printer_name', _cashDrawerPrinterName!);
-    } else {
-      await prefs.remove('local_cash_drawer_printer_name');
-    }
-    await prefs.setString('local_cash_drawer_method', _cashDrawerMethod);
-    await prefs.setInt('local_cash_drawer_pulse_pin', _cashDrawerPulsePin);
-    await prefs.setInt('local_cash_drawer_pulse_on_ms', _cashDrawerPulseOnMs);
-    await prefs.setInt('local_cash_drawer_pulse_off_ms', _cashDrawerPulseOffMs);
-    await prefs.setString('local_cash_drawer_network_ip', _cashDrawerNetworkIpController.text.trim());
-    await prefs.setInt(
-      'local_cash_drawer_network_port',
-      int.tryParse(_cashDrawerNetworkPortController.text.trim()) ?? 9100,
-    );
-
-    // 3. Save Bill Structure Toggles
-    await prefs.setBool('bill_show_shop_header', _showShopHeader);
-    await prefs.setBool('bill_show_slogan', _showSlogan);
-    await prefs.setString('bill_invoice_slogan', _sloganController.text.trim());
-    await prefs.setBool('bill_show_invoice_no', _showInvoiceNumber);
-    await prefs.setString('bill_invoice_prefix', _invoicePrefixController.text.trim());
-    await prefs.setBool('bill_show_date_time', _showDateTime);
-    await prefs.setBool('bill_show_cashier', _showCashierName);
-    await prefs.setBool('bill_show_customer', _showCustomerName);
-    await prefs.setBool('bill_show_customer_address', _showCustomerAddress);
-    await prefs.setBool('bill_show_item_table', _showItemTable);
-    await prefs.setBool('bill_show_item_numbers', _showItemNumbers);
-    await prefs.setBool('bill_show_subtotal', _showSubtotal);
-    await prefs.setBool('bill_show_discount', _showDiscount);
-    await prefs.setBool('bill_show_tax', _showTax);
-    await prefs.setBool('bill_show_total', _showTotal);
-    await prefs.setBool('bill_show_payment_details', _showPaymentDetails);
-    await prefs.setBool('bill_show_terms', _showTerms);
-    await prefs.setString('bill_invoice_terms', _termsController.text.trim());
-    await prefs.setBool('bill_show_footer', _showFooter);
-
-    // 4. Save to Database
-    final companion = db.PrintSettingsCompanion(
-      id: Value(
-        _settings?.id ?? DateTime.now().millisecondsSinceEpoch.toString(),
-      ),
-      tenantId: Value(widget.tenantId),
-      paperSize: Value(_paperSize),
-      printerName: Value(receiptPrinter.isNotEmpty ? receiptPrinter : null),
-      printerType: Value(_printerType),
-      invoiceTemplate: Value(_invoiceTemplate),
-      autoPrint: Value(_autoPrint),
-      showLogo: Value(_showLogo),
-      showBarcode: Value(_showBarcode),
-      showQr: Value(_showQr),
-      showTax: Value(_showTax),
-      showDiscount: Value(_showDiscount),
-      showCustomerAddress: Value(_showCustomerAddress),
-      marginTop: Value(marginV),
-      marginLeft: Value(marginH),
-      fontSize: Value(_fontSize),
-      lineSpacing: Value(_lineSpacing),
-      thankYouMessage: Value(_thankYouController.text.trim()),
-      returnPolicy: Value(
-        _returnPolicyController.text.trim().isEmpty
-            ? null
-            : _returnPolicyController.text.trim(),
-      ),
-      socialLinks: Value(
-        _socialLinksController.text.trim().isEmpty
-            ? null
-            : _socialLinksController.text.trim(),
-      ),
-      updatedAt: Value(DateTime.now()),
-    );
-
-    await widget.appDatabase.upsertPrintSettings(companion);
-
-    // Also update parent dashboard state if mounted
-    final dashState = context.findAncestorStateOfType<_DashboardScreenState>();
-    if (dashState != null) {
-      await dashState._loadDeviceLocalPrinterSettings();
-    }
-
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('POS Print & Hardware Settings Saved Successfully!'),
-        backgroundColor: Color(0xFF10B981),
-      ),
-    );
   }
 
   Future<void> _testPrintSlip() async {
@@ -560,6 +574,116 @@ class _PrintSettingsContentState extends State<PrintSettingsContent> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Delivery Note print error: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _testPrintLabel() async {
+    final labelPrinter = _labelPrinterController.text.trim();
+    try {
+      final doc = pw.Document();
+      final pageFormat = PdfPageFormat(
+        50 * PdfPageFormat.mm,
+        30 * PdfPageFormat.mm,
+        marginAll: 1 * PdfPageFormat.mm,
+      );
+      doc.addPage(
+        pw.Page(
+          pageFormat: pageFormat,
+          build: (_) => pw.Center(
+            child: pw.Column(
+              mainAxisAlignment: pw.MainAxisAlignment.center,
+              children: [
+                pw.Text(
+                  'STOREBUDDY POS',
+                  style: pw.TextStyle(
+                    fontSize: 7,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
+                ),
+                pw.SizedBox(height: 1),
+                pw.Text(
+                  'Sample Retail Product',
+                  style: const pw.TextStyle(fontSize: 6.5),
+                  maxLines: 1,
+                ),
+                pw.SizedBox(height: 2),
+                pw.BarcodeWidget(
+                  barcode: pw.Barcode.code128(),
+                  data: 'SB-TEST-001',
+                  width: 38 * PdfPageFormat.mm,
+                  height: 12 * PdfPageFormat.mm,
+                  drawText: true,
+                ),
+                pw.SizedBox(height: 2),
+                pw.Text(
+                  'LKR 1,250.00',
+                  style: pw.TextStyle(
+                    fontSize: 7.5,
+                    fontWeight: pw.FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      final pdfBytes = await doc.save();
+
+      if (labelPrinter.isNotEmpty) {
+        final printers = await Printing.listPrinters();
+        Printer? match;
+        final target = labelPrinter.toLowerCase();
+        for (final p in printers) {
+          if (p.name.toLowerCase() == target) {
+            match = p;
+            break;
+          }
+        }
+        if (match == null) {
+          for (final p in printers) {
+            if (p.name.toLowerCase().contains(target)) {
+              match = p;
+              break;
+            }
+          }
+        }
+
+        if (match != null) {
+          final res = await Printing.directPrintPdf(
+            printer: match,
+            onLayout: (_) async => pdfBytes,
+            format: pageFormat,
+          );
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  res
+                      ? 'Test label printed directly to ${match.name}!'
+                      : 'Print job queued for ${match.name}',
+                ),
+                backgroundColor: const Color(0xFF10B981),
+              ),
+            );
+          }
+          return;
+        }
+      }
+
+      await Printing.layoutPdf(
+        onLayout: (_) async => pdfBytes,
+        format: pageFormat,
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Test label print error: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -976,6 +1100,79 @@ class _PrintSettingsContentState extends State<PrintSettingsContent> {
               ],
             ),
           ),
+          // SECTION: Dedicated Barcode & Label Printer
+          _buildCard(
+            context,
+            title: 'Dedicated Barcode & Label Printer (Zebra, Xprinter, Dymo, Brother)',
+            subtitle: 'Direct hardware binding for single/roll barcode and price sticker printing.',
+            icon: Icons.qr_code_2_rounded,
+            iconColor: const Color(0xFF6366F1),
+            action: FilledButton.icon(
+              onPressed: _testPrintLabel,
+              icon: const Icon(Icons.print_rounded, size: 16),
+              label: const Text('⚡ Test Print 1 Label'),
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFF6366F1),
+                foregroundColor: Colors.white,
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (_availablePrinters.isNotEmpty) ...[
+                  DropdownButtonFormField<String>(
+                    value: _availablePrinters.any((p) => p.name == _labelPrinterController.text.trim())
+                        ? _labelPrinterController.text.trim()
+                        : null,
+                    decoration: const InputDecoration(
+                      labelText: 'Select Discovered Label Printer',
+                      border: inputBorder,
+                      prefixIcon: Icon(Icons.devices_rounded, size: 18),
+                    ),
+                    isExpanded: true,
+                    hint: const Text('Choose your Label Printer (Zebra, Xprinter, Dymo, Brother)...'),
+                    items: [
+                      const DropdownMenuItem<String>(
+                        value: '',
+                        child: Text('System Print Dialog (Default / No Direct Binding)'),
+                      ),
+                      ..._availablePrinters.map((p) {
+                        final isDef = p.isDefault ? ' (Default)' : '';
+                        return DropdownMenuItem<String>(
+                          value: p.name,
+                          child: Text('${p.name}$isDef', overflow: TextOverflow.ellipsis),
+                        );
+                      }),
+                    ],
+                    onChanged: (val) {
+                      setState(() {
+                        _labelPrinterController.text = val ?? '';
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                ],
+                TextFormField(
+                  controller: _labelPrinterController,
+                  decoration: InputDecoration(
+                    labelText: 'Target Label Printer Name / Port',
+                    hintText: 'Leave empty for system dialog, or choose detected printer above',
+                    border: inputBorder,
+                    prefixIcon: const Icon(Icons.qr_code_scanner_outlined),
+                    suffixIcon: _labelPrinterController.text.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear, size: 16),
+                            onPressed: () => setState(() => _labelPrinterController.clear()),
+                          )
+                        : null,
+                  ),
+                  onChanged: (_) => setState(() {}),
+                ),
+              ],
+            ),
+          ),
           const SizedBox(height: 20),
 
           // SECTION 2: Cash Drawer Setup (Device Local Hardware)
@@ -1208,16 +1405,56 @@ class _PrintSettingsContentState extends State<PrintSettingsContent> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (_availablePrinters.isNotEmpty) ...[
+                  DropdownButtonFormField<String>(
+                    value: _availablePrinters.any((p) => p.name == _labelPrinterController.text.trim())
+                        ? _labelPrinterController.text.trim()
+                        : null,
+                    decoration: const InputDecoration(
+                      labelText: 'Select Discovered Label / Barcode Printer',
+                      border: inputBorder,
+                      prefixIcon: Icon(Icons.devices_rounded, size: 18),
+                    ),
+                    isExpanded: true,
+                    hint: const Text('Choose your Zebra, Dymo, Brother, Xprinter or label printer...'),
+                    items: [
+                      ..._availablePrinters.map((p) {
+                        return DropdownMenuItem<String>(
+                          value: p.name,
+                          child: Text(p.name, overflow: TextOverflow.ellipsis),
+                        );
+                      }),
+                    ],
+                    onChanged: (val) {
+                      if (val != null) {
+                        setState(() {
+                          _labelPrinterController.text = val;
+                        });
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 Row(
                   children: [
                     Expanded(
                       child: TextFormField(
                         controller: _labelPrinterController,
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           labelText: 'Dedicated Barcode / Label Printer Name',
                           hintText: 'e.g. Zebra ZD230, Dymo LabelWriter 450',
                           border: inputBorder,
-                          prefixIcon: Icon(Icons.label_outline_rounded),
+                          prefixIcon: const Icon(Icons.label_outline_rounded),
+                          suffixIcon: _labelPrinterController.text.isNotEmpty
+                              ? IconButton(
+                                  icon: const Icon(Icons.clear, size: 16),
+                                  onPressed: () {
+                                    setState(() {
+                                      _labelPrinterController.clear();
+                                    });
+                                  },
+                                )
+                              : null,
                         ),
                       ),
                     ),

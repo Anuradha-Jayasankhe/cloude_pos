@@ -10,6 +10,8 @@ import 'dart:convert';
 import '../models/models.dart';
 
 class PrintService {
+  static pw.ThemeData? _cachedReceiptTheme;
+
   static Future<bool> kickCashDrawer({
     String? printerName,
     String method = 'print_job',
@@ -125,41 +127,45 @@ class PrintService {
   }) async {
     final pdf = pw.Document();
 
-    // Load embedded Unicode-capable font for reliable glyph rendering.
-    pw.ThemeData? theme;
-    try {
-      final ttfData = await rootBundle.load(
-        'assets/fonts/NotoSans-Regular.ttf',
-      );
-      final baseFont = pw.Font.ttf(ttfData);
-      theme = pw.ThemeData.withFont(
-        base: baseFont,
-        bold: baseFont,
-        italic: baseFont,
-        boldItalic: baseFont,
-      );
-    } catch (e) {
-      theme = null;
+    // Load embedded Unicode-capable font for reliable glyph rendering (cached for instant printing).
+    pw.ThemeData? theme = _cachedReceiptTheme;
+    if (theme == null) {
+      try {
+        final ttfData = await rootBundle.load(
+          'assets/fonts/NotoSans-Regular.ttf',
+        );
+        final baseFont = pw.Font.ttf(ttfData);
+        theme = pw.ThemeData.withFont(
+          base: baseFont,
+          bold: baseFont,
+          italic: baseFont,
+          boldItalic: baseFont,
+        );
+        _cachedReceiptTheme = theme;
+      } catch (e) {
+        theme = null;
+      }
     }
 
     final isA4Printer = settings.printerType.trim().toUpperCase() == 'A4' ||
         settings.paperSize.trim().toUpperCase() == 'A4';
+    final fallbackWidthMm = settings.paperSize.contains('58') ? 58.0 : 72.0;
+    final widthMm = (settings.paperWidthMm != null && settings.paperWidthMm! > 0)
+        ? settings.paperWidthMm!
+        : fallbackWidthMm;
     final paperFormat = isA4Printer
         ? PdfPageFormat.a4
-        : ((settings.paperWidthMm != null && settings.paperWidthMm! > 0)
-            ? PdfPageFormat(
-                settings.paperWidthMm! * PdfPageFormat.mm,
-                double.infinity,
-                marginAll: 2 * PdfPageFormat.mm,
-              )
-            : getThermalPaperFormat(settings.paperSize));
+        : PdfPageFormat(
+            widthMm * PdfPageFormat.mm,
+            double.infinity,
+          );
 
-    final topMargin = (settings.marginVerticalMm != null && settings.marginVerticalMm! > 0)
+    final topMargin = (settings.marginVerticalMm != null && settings.marginVerticalMm! >= 0)
         ? settings.marginVerticalMm! * PdfPageFormat.mm
-        : settings.marginTop;
-    final leftMargin = (settings.marginHorizontalMm != null && settings.marginHorizontalMm! > 0)
+        : 3.0 * PdfPageFormat.mm;
+    final leftMargin = (settings.marginHorizontalMm != null && settings.marginHorizontalMm! >= 0)
         ? settings.marginHorizontalMm! * PdfPageFormat.mm
-        : settings.marginLeft;
+        : 2.0 * PdfPageFormat.mm;
 
     if (isA4Printer) {
       pdf.addPage(
@@ -182,11 +188,9 @@ class PrintService {
       pdf.addPage(
         pw.Page(
           pageFormat: paperFormat,
-          margin: pw.EdgeInsets.only(
-            top: topMargin,
-            left: leftMargin,
-            right: leftMargin,
-            bottom: 10,
+          margin: pw.EdgeInsets.symmetric(
+            horizontal: leftMargin,
+            vertical: topMargin,
           ),
           theme: theme,
           build: (context) => buildThermalReceipt(
@@ -227,17 +231,41 @@ class PrintService {
       if (settings.printerName == '__FIRST_PRINTER__' && printers.isNotEmpty) {
         target = printers.first;
       } else {
-        target = printers.firstWhere(
-          (p) =>
-              p.name.toLowerCase().contains(settings.printerName!.toLowerCase()) ||
-              p.url.toLowerCase().contains(settings.printerName!.toLowerCase()),
-          orElse: () => const Printer(url: '', name: 'default'),
-        );
+        final searchName = settings.printerName!.trim().toLowerCase();
+        for (final p in printers) {
+          if (p.name.trim().toLowerCase() == searchName) {
+            target = p;
+            break;
+          }
+        }
+        if (target == null) {
+          for (final p in printers) {
+            if (p.name.toLowerCase().contains(searchName) ||
+                p.url.toLowerCase().contains(searchName)) {
+              target = p;
+              break;
+            }
+          }
+        }
       }
-      if (target != null && target.url.isNotEmpty) {
+      if (target != null && target.name.isNotEmpty && target.name != 'default') {
+        final isA4Printer = settings.printerType.trim().toUpperCase() == 'A4' ||
+            settings.paperSize.trim().toUpperCase() == 'A4';
+        final fallbackWidthMm = settings.paperSize.contains('58') ? 58.0 : 72.0;
+        final widthMm = (settings.paperWidthMm != null && settings.paperWidthMm! > 0)
+            ? settings.paperWidthMm!
+            : fallbackWidthMm;
+        final paperFormat = isA4Printer
+            ? PdfPageFormat.a4
+            : PdfPageFormat(
+                widthMm * PdfPageFormat.mm,
+                double.infinity,
+              );
+
         await Printing.directPrintPdf(
           printer: target,
           onLayout: (_) async => pdfBytes,
+          format: paperFormat,
         );
         return;
       }
@@ -389,13 +417,24 @@ class PrintService {
 
     if (settings.printerName != null && settings.printerName!.isNotEmpty) {
       final printers = await Printing.listPrinters();
-      final target = printers.firstWhere(
-        (p) =>
-            p.name.toLowerCase().contains(settings.printerName!.toLowerCase()) ||
-            p.url.toLowerCase().contains(settings.printerName!.toLowerCase()),
-        orElse: () => const Printer(url: '', name: 'default'),
-      );
-      if (target.url.isNotEmpty) {
+      Printer? target;
+      final searchName = settings.printerName!.trim().toLowerCase();
+      for (final p in printers) {
+        if (p.name.trim().toLowerCase() == searchName) {
+          target = p;
+          break;
+        }
+      }
+      if (target == null) {
+        for (final p in printers) {
+          if (p.name.toLowerCase().contains(searchName) ||
+              p.url.toLowerCase().contains(searchName)) {
+            target = p;
+            break;
+          }
+        }
+      }
+      if (target != null && target.name.isNotEmpty && target.name != 'default') {
         await Printing.directPrintPdf(
           printer: target,
           onLayout: (_) => pdf.save(),
@@ -974,13 +1013,24 @@ class PrintService {
 
     if (settings.printerName != null && settings.printerName!.isNotEmpty) {
       final printers = await Printing.listPrinters();
-      final target = printers.firstWhere(
-        (p) =>
-            p.name.toLowerCase().contains(settings.printerName!.toLowerCase()) ||
-            p.url.toLowerCase().contains(settings.printerName!.toLowerCase()),
-        orElse: () => const Printer(url: '', name: 'default'),
-      );
-      if (target.url.isNotEmpty) {
+      Printer? target;
+      final searchName = settings.printerName!.trim().toLowerCase();
+      for (final p in printers) {
+        if (p.name.trim().toLowerCase() == searchName) {
+          target = p;
+          break;
+        }
+      }
+      if (target == null) {
+        for (final p in printers) {
+          if (p.name.toLowerCase().contains(searchName) ||
+              p.url.toLowerCase().contains(searchName)) {
+            target = p;
+            break;
+          }
+        }
+      }
+      if (target != null && target.name.isNotEmpty && target.name != 'default') {
         await Printing.directPrintPdf(
           printer: target,
           onLayout: (_) async => pdfBytes,

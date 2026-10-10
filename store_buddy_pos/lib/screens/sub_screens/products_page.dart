@@ -924,7 +924,7 @@ extension _products_pageExt on _DashboardScreenState {
 
     return Padding(
       padding: const EdgeInsets.all(UiSpacing.lg),
-      child: Column(
+        child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
@@ -1011,10 +1011,11 @@ extension _products_pageExt on _DashboardScreenState {
             child: TextField(
               controller: _productSearchController,
               onChanged: (_) => setState(() {}),
+              onSubmitted: (val) => _handleProductPageBarcodeScan(val),
               style: TextStyle(fontSize: 14, color: colorScheme.onSurface),
               decoration: InputDecoration(
                 hintText:
-                    'Search products by name, category, SKU or barcode...',
+                    'Search products or scan barcode to add / find...',
                 hintStyle: TextStyle(
                   color: colorScheme.onSurface.withValues(alpha: 0.4),
                   fontSize: 13.5,
@@ -1024,6 +1025,40 @@ extension _products_pageExt on _DashboardScreenState {
                   color: colorScheme.onSurface.withValues(alpha: 0.5),
                   size: 20,
                 ),
+                suffixIcon: _productSearchController.text.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear_rounded, size: 18),
+                        onPressed: () {
+                          _productSearchController.clear();
+                          setState(() {});
+                        },
+                      )
+                    : Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF10B981).withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(
+                            color: const Color(0xFF10B981).withValues(alpha: 0.3),
+                          ),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.qr_code_scanner, size: 14, color: Color(0xFF10B981)),
+                            SizedBox(width: 4),
+                            Text(
+                              'Scanner Active',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF10B981),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                 filled: true,
                 fillColor: Colors.transparent,
                 border: InputBorder.none,
@@ -1825,5 +1860,64 @@ extension _products_pageExt on _DashboardScreenState {
         ],
       ),
     );
+}
+
+Future<void> _handleProductPageBarcodeScan(String val) async {
+  if (_isProductDialogOpen) return;
+  final query = val.trim();
+  if (query.isEmpty) return;
+
+  // Check if query matches existing product by barcode, ID, IMEI, or exact name
+  final exists = _products.any((p) {
+    final b = p.barcode.trim();
+    final id = p.id.trim();
+    return (b.isNotEmpty && b.toLowerCase() == query.toLowerCase()) ||
+        id.toLowerCase() == query.toLowerCase() ||
+        p.imeiList.any((i) => i.toLowerCase() == query.toLowerCase()) ||
+        p.name.trim().toLowerCase() == query.toLowerCase();
+  });
+
+  if (!exists) {
+    // Unregistered barcode: open Add Product dialog with scanned barcode prefilled!
+    if (!_canManageCatalog) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('You do not have permission to add new products.'),
+          ),
+        );
+      }
+      return;
+    }
+
+    _isProductDialogOpen = true;
+    try {
+      _productSearchController.clear();
+      if (mounted) setState(() {});
+
+      final result = await _showProductDialog(barcode: query);
+      if (result != null && mounted) {
+        await _handleProductCreation(result);
+        _productSearchController.clear();
+        if (mounted) {
+          setState(() {});
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Product "${result.product.name}" added successfully with barcode "$query"!',
+              ),
+              backgroundColor: const Color(0xFF10B981),
+            ),
+          );
+        }
+      }
+    } finally {
+      _isProductDialogOpen = false;
+    }
+  } else {
+    // Existing product: filter the table to show it
+    _productSearchController.text = query;
+    if (mounted) setState(() {});
   }
+}
 }
