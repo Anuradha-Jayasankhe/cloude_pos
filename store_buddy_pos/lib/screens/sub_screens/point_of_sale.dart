@@ -192,6 +192,31 @@ extension _point_of_saleExt on _DashboardScreenState {
       return;
     }
 
+    // 3.5 Check partial product name / category matches
+    final partialMatches = _scopedProducts
+        .where(
+          (p) =>
+              p.name.toLowerCase().contains(trimmedVal.toLowerCase()) ||
+              p.category.toLowerCase().contains(trimmedVal.toLowerCase()),
+        )
+        .toList();
+
+    if (partialMatches.length == 1) {
+      final p = partialMatches.first;
+      if (p.allowLooseSales) {
+        _showDualUnitSelectionDialog(p);
+      } else {
+        _addToCartWithImeiSelection(p);
+      }
+      _productSearchController.clear();
+      _posProductSearchFocusNode.requestFocus();
+      return;
+    } else if (partialMatches.length > 1) {
+      // Multiple items match the name/category search, unfocus so cashier can pick from grid!
+      _posProductSearchFocusNode.unfocus();
+      return;
+    }
+
     // 4. Barcode not registered: Offer prompt to add new product with this barcode
     if (!mounted) return;
     final shouldAdd = await showDialog<bool>(
@@ -598,15 +623,30 @@ extension _point_of_saleExt on _DashboardScreenState {
 
     final rawFilteredProducts = _scopedProducts.where((p) {
       final q = _productSearchController.text.trim().toLowerCase();
-      final matchCategory =
+      final selectedCategory = _posCategoryFilter.trim().toLowerCase();
+      final matchCategory = _posCategoryFilter == 'All Categories' ||
+          p.category.trim().toLowerCase() == selectedCategory;
+
+      if (q.isEmpty) {
+        return matchCategory;
+      }
+
+      // Check all query words against product name, category, id/sku, barcode, description
+      final queryTokens =
+          q.split(RegExp(r'\s+')).where((t) => t.isNotEmpty).toList();
+      final matchesQuery = queryTokens.every((token) =>
+          p.name.toLowerCase().contains(token) ||
+          p.category.toLowerCase().contains(token) ||
+          p.id.toLowerCase().contains(token) ||
+          p.barcode.toLowerCase().contains(token) ||
+          p.description.toLowerCase().contains(token));
+
+      if (!matchesQuery) return false;
+
+      // If user searched a category or matches selected filter or viewing all
+      return matchCategory ||
           _posCategoryFilter == 'All Categories' ||
-          p.category == _posCategoryFilter;
-      if (!matchCategory) return false;
-      if (q.isEmpty) return true;
-      return p.name.toLowerCase().contains(q) ||
-          p.category.toLowerCase().contains(q) ||
-          p.id.toLowerCase().contains(q) ||
-          p.barcode.toLowerCase().contains(q);
+          p.category.toLowerCase().contains(q);
     }).toList();
 
     final List<_ProductItem> filteredProducts;
@@ -924,8 +964,17 @@ extension _point_of_saleExt on _DashboardScreenState {
                                   onChanged: (_) => setState(() {}),
                                   onSubmitted: _handleBarcodeOrSearchScan,
                                   decoration: InputDecoration(
-                                    hintText: 'Search products or scan',
+                                    hintText: 'Search products, category or scan...',
                                     prefixIcon: const Icon(Icons.search),
+                                    suffixIcon: _productSearchController.text.isNotEmpty
+                                        ? IconButton(
+                                            icon: const Icon(Icons.clear, size: 18),
+                                            onPressed: () {
+                                              _productSearchController.clear();
+                                              setState(() {});
+                                            },
+                                          )
+                                        : null,
                                     filled: true,
                                     fillColor: isDark
                                         ? const Color(0xFF2F2B48)
@@ -1070,8 +1119,17 @@ extension _point_of_saleExt on _DashboardScreenState {
                                     onChanged: (_) => setState(() {}),
                                     onSubmitted: _handleBarcodeOrSearchScan,
                                     decoration: InputDecoration(
-                                      hintText: 'Search products or scan',
+                                      hintText: 'Search products, category or scan...',
                                       prefixIcon: const Icon(Icons.search),
+                                      suffixIcon: _productSearchController.text.isNotEmpty
+                                          ? IconButton(
+                                              icon: const Icon(Icons.clear, size: 18),
+                                              onPressed: () {
+                                                _productSearchController.clear();
+                                                setState(() {});
+                                              },
+                                            )
+                                          : null,
                                       filled: true,
                                       fillColor: isDark
                                           ? const Color(0xFF2F2B48)
@@ -1220,16 +1278,16 @@ extension _point_of_saleExt on _DashboardScreenState {
 
                       if (availableWidth < 320) {
                         crossAxisCount = 1;
-                        childAspectRatio = 1.4;
+                        childAspectRatio = 1.35;
                       } else if (availableWidth < 520) {
                         crossAxisCount = 2;
-                        childAspectRatio = 0.72;
+                        childAspectRatio = 0.70;
                       } else if (availableWidth < 800) {
                         crossAxisCount = 3;
-                        childAspectRatio = 0.74;
+                        childAspectRatio = 0.71;
                       } else {
                         crossAxisCount = 4;
-                        childAspectRatio = 0.75;
+                        childAspectRatio = 0.72;
                       }
 
                       return GridView.builder(
@@ -1306,8 +1364,9 @@ extension _point_of_saleExt on _DashboardScreenState {
                                                 ? matchedWithImg.imageUrl
                                                 : null;
 
+                                        Widget imageWidget;
                                         if (imgPath != null) {
-                                          return Container(
+                                          imageWidget = Container(
                                             height: 100,
                                             width: double.infinity,
                                             decoration: BoxDecoration(
@@ -1364,45 +1423,92 @@ extension _point_of_saleExt on _DashboardScreenState {
                                               ),
                                             ),
                                           );
+                                        } else {
+                                          imageWidget = Container(
+                                            height: 90,
+                                            width: double.infinity,
+                                            decoration: BoxDecoration(
+                                              gradient: UiGradients.brand,
+                                              borderRadius: BorderRadius.circular(
+                                                UiRadius.sm,
+                                              ),
+                                              boxShadow: [
+                                                BoxShadow(
+                                                  color: const Color(
+                                                    0xFF6366F1,
+                                                  ).withValues(alpha: 0.15),
+                                                  blurRadius: 6,
+                                                  offset: const Offset(0, 2),
+                                                ),
+                                              ],
+                                            ),
+                                            alignment: Alignment.center,
+                                            child: Column(
+                                              mainAxisAlignment: MainAxisAlignment.center,
+                                              children: [
+                                                const Icon(Icons.inventory_2_outlined, color: Colors.white70, size: 26),
+                                                const SizedBox(height: 4),
+                                                Text(
+                                                  p.name.isNotEmpty
+                                                      ? p.name[0].toUpperCase()
+                                                      : 'P',
+                                                  style: const TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize: 18,
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          );
                                         }
 
-                                        return Container(
-                                          height: 90,
-                                          width: double.infinity,
-                                          decoration: BoxDecoration(
-                                            gradient: UiGradients.brand,
-                                            borderRadius: BorderRadius.circular(
-                                              UiRadius.sm,
-                                            ),
-                                            boxShadow: [
-                                              BoxShadow(
-                                                color: const Color(
-                                                  0xFF6366F1,
-                                                ).withValues(alpha: 0.15),
-                                                blurRadius: 6,
-                                                offset: const Offset(0, 2),
-                                              ),
-                                            ],
-                                          ),
-                                          alignment: Alignment.center,
-                                          child: Column(
-                                            mainAxisAlignment: MainAxisAlignment.center,
+                                        if (p.category.trim().isNotEmpty) {
+                                          return Stack(
                                             children: [
-                                              const Icon(Icons.inventory_2_outlined, color: Colors.white70, size: 26),
-                                              const SizedBox(height: 4),
-                                              Text(
-                                                p.name.isNotEmpty
-                                                    ? p.name[0].toUpperCase()
-                                                    : 'P',
-                                                style: const TextStyle(
-                                                  color: Colors.white,
-                                                  fontSize: 18,
-                                                  fontWeight: FontWeight.bold,
+                                              imageWidget,
+                                              Positioned(
+                                                top: 6,
+                                                left: 6,
+                                                child: Container(
+                                                  padding: const EdgeInsets.symmetric(
+                                                    horizontal: 6,
+                                                    vertical: 2.5,
+                                                  ),
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.black.withValues(alpha: 0.65),
+                                                    borderRadius: BorderRadius.circular(5),
+                                                  ),
+                                                  child: Row(
+                                                    mainAxisSize: MainAxisSize.min,
+                                                    children: [
+                                                      const Icon(
+                                                        Icons.category_outlined,
+                                                        size: 9.5,
+                                                        color: Colors.white,
+                                                      ),
+                                                      const SizedBox(width: 3.5),
+                                                      ConstrainedBox(
+                                                        constraints: const BoxConstraints(maxWidth: 80),
+                                                        child: Text(
+                                                          p.category.trim(),
+                                                          maxLines: 1,
+                                                          overflow: TextOverflow.ellipsis,
+                                                          style: const TextStyle(
+                                                            color: Colors.white,
+                                                            fontSize: 9.5,
+                                                            fontWeight: FontWeight.w600,
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
                                                 ),
                                               ),
                                             ],
-                                          ),
-                                        );
+                                          );
+                                        }
+                                        return imageWidget;
                                       },
                                     ),
                                     const SizedBox(height: 6),
@@ -1416,6 +1522,54 @@ extension _point_of_saleExt on _DashboardScreenState {
                                         color: colorScheme.onSurface,
                                       ),
                                     ),
+                                    if (p.category.trim().isNotEmpty) ...[
+                                      const SizedBox(height: 3),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 6,
+                                          vertical: 2,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: isDark
+                                              ? const Color(0xFF6366F1).withValues(alpha: 0.18)
+                                              : const Color(0xFFEEF2FF),
+                                          borderRadius: BorderRadius.circular(4),
+                                          border: Border.all(
+                                            color: isDark
+                                                ? const Color(0xFF818CF8).withValues(alpha: 0.35)
+                                                : const Color(0xFFC7D2FE),
+                                            width: 0.8,
+                                          ),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              Icons.label_outline_rounded,
+                                              size: 10,
+                                              color: isDark
+                                                  ? const Color(0xFFA5B4FC)
+                                                  : const Color(0xFF4F46E5),
+                                            ),
+                                            const SizedBox(width: 3),
+                                            Flexible(
+                                              child: Text(
+                                                p.category.trim(),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: TextStyle(
+                                                  fontSize: 9.5,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: isDark
+                                                      ? const Color(0xFFA5B4FC)
+                                                      : const Color(0xFF4F46E5),
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
                                     const SizedBox(height: 2),
                                     Text(
                                       displayMatches.length > 1
