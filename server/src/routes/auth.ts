@@ -43,6 +43,7 @@ const toTokenResponse = (args: {
   tenantId: string;
   role: string;
   locationIds?: string[];
+  permissions?: string[];
   trialEndsAt?: Date | null;
   maxLocations?: number;
   planId?: string;
@@ -57,6 +58,7 @@ const toTokenResponse = (args: {
   tenant_id: args.tenantId,
   role: args.role,
   location_ids: args.locationIds ?? [],
+  permissions: args.permissions ?? [],
   trial_ends_at: args.trialEndsAt ?? null,
   max_locations: args.maxLocations ?? 3,
   plan_id: args.planId ?? 'trial',
@@ -240,6 +242,7 @@ authRouter.post('/login', async (req, res) => {
       tenantId: user.tenantId,
       role: user.role,
       locationIds: user.locationIds,
+      permissions: user.permissions ?? [],
       trialEndsAt: tenant?.trialEndsAt ?? null,
       maxLocations: tenant?.maxLocations ?? 3,
       planId: tenant?.planId,
@@ -388,6 +391,7 @@ authRouter.post('/users', requireAuth, async (req, res) => {
     password?: string;
     role?: string;
     location_ids?: string[];
+    permissions?: string[];
     active?: boolean;
   };
 
@@ -403,6 +407,9 @@ authRouter.post('/users', requireAuth, async (req, res) => {
   const locationIds = (payload.location_ids ?? [])
     .map((item) => String(item).trim())
     .filter((item) => item.length > 0);
+  const permissions = Array.isArray(payload.permissions)
+    ? payload.permissions.map((p) => String(p).trim()).filter((p) => p.length > 0)
+    : [];
   const active = payload.active ?? true;
 
   if (!targetTenantId || !name || !email || !password) {
@@ -433,6 +440,7 @@ authRouter.post('/users', requireAuth, async (req, res) => {
     email,
     role,
     locationIds,
+    permissions,
     passwordHash: await hashPassword(password),
     active,
   });
@@ -444,7 +452,53 @@ authRouter.post('/users', requireAuth, async (req, res) => {
     email: createdUser.email,
     role: createdUser.role,
     location_ids: createdUser.locationIds,
+    permissions: createdUser.permissions,
     active: createdUser.active,
+  });
+});
+
+authRouter.put('/users/:id', requireAuth, async (req, res) => {
+  if (!req.auth || !canManageTenantUsers(req.auth.role)) {
+    res.status(403).json({ detail: 'Not allowed to edit users' });
+    return;
+  }
+
+  const userId = req.params.id;
+  const payload = req.body as {
+    name?: string;
+    role?: string;
+    location_ids?: string[];
+    permissions?: string[];
+    active?: boolean;
+  };
+
+  const updateFields: Record<string, unknown> = {};
+  if (payload.name !== undefined) updateFields.name = payload.name.trim();
+  if (payload.role !== undefined) updateFields.role = payload.role.trim().toLowerCase();
+  if (payload.location_ids !== undefined) updateFields.locationIds = payload.location_ids;
+  if (payload.permissions !== undefined) updateFields.permissions = payload.permissions;
+  if (payload.active !== undefined) updateFields.active = payload.active;
+
+  const filter: Record<string, unknown> = { _id: userId };
+  if (req.auth.role !== 'platform_admin') {
+    filter.tenantId = req.auth.tenantId;
+  }
+
+  const updatedUser = await UserModel.findOneAndUpdate(filter, { $set: updateFields }, { new: true });
+  if (!updatedUser) {
+    res.status(404).json({ detail: 'User not found' });
+    return;
+  }
+
+  res.status(200).json({
+    user_id: String(updatedUser._id),
+    tenant_id: updatedUser.tenantId,
+    name: updatedUser.name,
+    email: updatedUser.email,
+    role: updatedUser.role,
+    location_ids: updatedUser.locationIds,
+    permissions: updatedUser.permissions,
+    active: updatedUser.active,
   });
 });
 

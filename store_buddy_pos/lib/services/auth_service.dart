@@ -143,6 +143,10 @@ class AuthService {
         (data['location_ids'] as List<dynamic>? ?? const <dynamic>[])
             .map((item) => item.toString())
             .toList();
+    final permissions =
+        (data['permissions'] as List<dynamic>? ?? const <dynamic>[])
+            .map((item) => item.toString())
+            .toList();
     final maxLocations = (data['max_locations'] as num?)?.toInt() ?? 100;
 
     if (resolvedTenantId.isEmpty || token.isEmpty || userId.isEmpty) {
@@ -159,9 +163,11 @@ class AuthService {
       role: role,
       isActive: true,
       locationIds: locationIds,
+      permissions: permissions,
       maxLocations: maxLocations,
     );
     await _storeSessionUser(user, token);
+    await prefs.setBool('is_offline_mode', false);
 
     // Persist subscription/plan info for display in Sync Manager
     try {
@@ -691,6 +697,7 @@ class AuthService {
     required String password,
     required String role,
     List<String> locationIds = const <String>[],
+    List<String> permissions = const <String>[],
     bool active = true,
     String? userName,
   }) async {
@@ -719,6 +726,7 @@ class AuthService {
           'password': normalizedPassword,
           'role': normalizedRole,
           'location_ids': locationIds,
+          'permissions': permissions,
           'active': active,
         },
       );
@@ -802,6 +810,33 @@ class AuthService {
     } catch (_) {
       _setError('Could not create user login right now.');
       return null;
+    }
+  }
+
+  Future<bool> updateTenantUserDetails({
+    required String userId,
+    String? name,
+    String? role,
+    List<String>? locationIds,
+    List<String>? permissions,
+    bool? active,
+  }) async {
+    _setError(null);
+    try {
+      final data = <String, dynamic>{};
+      if (name != null) data['name'] = name;
+      if (role != null) data['role'] = role.toLowerCase();
+      if (locationIds != null) data['location_ids'] = locationIds;
+      if (permissions != null) data['permissions'] = permissions;
+      if (active != null) data['active'] = active;
+
+      final response = await _apiClient.put(
+        '/auth/users/$userId',
+        data: data,
+      );
+      return response.statusCode == 200;
+    } catch (_) {
+      return false;
     }
   }
 
@@ -1218,16 +1253,17 @@ class AuthService {
     final prefs = await SharedPreferences.getInstance();
     final isOffline = prefs.getBool('is_offline_mode') ?? false;
 
-    // If online token exists and not strictly offline, query server
+    // If online cloud token exists, query server and sync status
     final token = (prefs.getString('auth_token') ?? '').trim();
-    if (token.isNotEmpty &&
-        !token.startsWith('store-session-token-') &&
-        !isOffline) {
+    final isCloudToken =
+        token.isNotEmpty && !token.startsWith('store-session-token-');
+    if (isCloudToken) {
       try {
         final res = await _apiClient.get('/auth/subscription-status');
         if (res.statusCode == 200 && res.data is Map) {
           final data = Map<String, dynamic>.from(res.data as Map);
           await prefs.setString('subscription_info', jsonEncode(data));
+          await prefs.setBool('is_offline_mode', false);
           if (data['plan_expires_at'] != null) {
             await prefs.setString(
               'trial_ends_at',
@@ -1258,18 +1294,21 @@ class AuthService {
     final now = DateTime.now();
     final isExpired = expiresAt != null && now.isAfter(expiresAt);
 
+    final effectiveOffline = isCloudToken ? false : isOffline;
+
     return {
       'tenant_id': prefs.getString('tenant_id') ?? '',
       'store_name': prefs.getString(_activationStoreNameKey) ?? 'My Store',
       'status': isExpired
           ? 'EXPIRED'
-          : (info['status'] ?? (isOffline ? 'OFFLINE' : 'TRIAL')),
-      'plan_id': info['plan_id'] ?? (isOffline ? 'offline' : 'trial'),
+          : (info['status'] ?? (effectiveOffline ? 'OFFLINE' : 'TRIAL')),
+      'plan_id': info['plan_id'] ?? (effectiveOffline ? 'offline' : 'trial'),
       'plan_name': info['plan_name'] ??
-          (isOffline ? 'Offline Standalone' : 'Free Trial'),
-      'sync_enabled': !isOffline && (info['sync_enabled'] ?? true),
+          (effectiveOffline ? 'Offline Standalone' : 'Free Trial'),
+      'sync_enabled': !effectiveOffline && (info['sync_enabled'] ?? true),
       'plan_expires_at': expiresAt?.toIso8601String(),
       'is_expired': isExpired,
+      'is_offline_mode': effectiveOffline,
       'hotline': '+94 72 954 5538',
       'support_email': 'contact@bizparkstudio.lk',
     };

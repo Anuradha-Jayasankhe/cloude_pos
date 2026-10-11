@@ -954,6 +954,7 @@ class User {
   final String role;
   final bool isActive;
   final List<String> locationIds;
+  final List<String> permissions;
   final int maxLocations;
   final String? token;
   final String? refreshToken;
@@ -966,6 +967,7 @@ class User {
     required this.role,
     required this.isActive,
     this.locationIds = const [],
+    this.permissions = const [],
     this.maxLocations = 100,
     this.token,
     this.refreshToken,
@@ -983,6 +985,10 @@ class User {
           (json['location_ids'] as List<dynamic>? ??
                   json['locationIds'] as List<dynamic>? ??
                   const <dynamic>[])
+              .map((item) => item.toString())
+              .toList(),
+      permissions:
+          (json['permissions'] as List<dynamic>? ?? const <dynamic>[])
               .map((item) => item.toString())
               .toList(),
       maxLocations:
@@ -1003,6 +1009,7 @@ class User {
       'role': role,
       'isActive': isActive,
       'locationIds': locationIds,
+      'permissions': permissions,
       'maxLocations': maxLocations,
       'token': token,
       'refreshToken': refreshToken,

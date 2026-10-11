@@ -1,4 +1,4 @@
-﻿part of '../dashboard_screen.dart';
+part of '../dashboard_screen.dart';
 
 extension _users_pageExt on _DashboardScreenState {
   Widget _buildUsersPage() {
@@ -223,6 +223,7 @@ extension _users_pageExt on _DashboardScreenState {
                                 password: created.password,
                                 role: created.user.role.toLowerCase(),
                                 locationIds: created.user.locations,
+                                permissions: created.user.permissions,
                                 active: created.user.active,
                                 userName: created.user.name,
                               );
@@ -767,6 +768,20 @@ extension _users_pageExt on _DashboardScreenState {
                                                         .user
                                                         .linkedEmployeeId,
                                                   );
+
+                                                  await authService
+                                                      .updateTenantUserDetails(
+                                                        userId: edited.user.id,
+                                                        name: edited.user.name,
+                                                        role: edited.user.role
+                                                            .toLowerCase(),
+                                                        locationIds: edited
+                                                            .user.locations,
+                                                        permissions: edited
+                                                            .user.permissions,
+                                                        active:
+                                                            edited.user.active,
+                                                      );
 
                                                   if (edited
                                                       .password

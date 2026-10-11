@@ -2682,7 +2682,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
   bool get _canManageCatalog =>
       _isOwner ||
-      _isManager ||
+      (_currentUserPermissions.isEmpty && (_isAdmin || _isManager)) ||
       _hasAnyPermission(const {
         'PRODUCTS:EDIT',
         'CATEGORIES:EDIT',
@@ -2695,7 +2695,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       });
   bool get _canManageEmployees =>
       _isOwner ||
-      _isManager ||
+      (_currentUserPermissions.isEmpty && (_isAdmin || _isManager)) ||
       _hasAnyPermission(const {
         'EMPLOYEES:EDIT',
         'ATTENDANCE:EDIT',
@@ -2703,62 +2703,76 @@ class _DashboardScreenState extends State<DashboardScreen> {
       });
   bool get _canManageSettings =>
       _isOwner ||
-      _isManager ||
+      (_currentUserPermissions.isEmpty && (_isAdmin || _isManager)) ||
       _hasAnyPermission(const {'SETTINGS:EDIT', 'LOCATIONS:EDIT'});
   bool get _canChangeSalesStatus =>
       _isOwner ||
-      _isManager ||
+      (_currentUserPermissions.isEmpty && (_isAdmin || _isManager)) ||
       _hasAnyPermission(const {'SALES:EDIT', 'INSTALLMENTS:EDIT'});
   bool get _canRunSync =>
-      !_isCashier ||
+      _isOwner ||
+      (_currentUserPermissions.isEmpty && !_isCashier) ||
       _hasAnyPermission(const {'SYNC MANAGER', 'SYNC MANAGER:EDIT'});
   bool get _canCreateUsers =>
       _isOwner ||
-      _isAdmin ||
-      _isManager ||
+      (_currentUserPermissions.isEmpty && (_isAdmin || _isManager)) ||
       _hasAnyPermission(const {'USERS:EDIT'});
   bool get _canEditUsers =>
       _isOwner ||
-      _isAdmin ||
-      _isManager ||
+      (_currentUserPermissions.isEmpty && (_isAdmin || _isManager)) ||
       _hasAnyPermission(const {'USERS:EDIT'});
   bool get _canDeleteUsers =>
       _isOwner ||
-      _isAdmin ||
-      _isManager ||
+      (_currentUserPermissions.isEmpty && (_isAdmin || _isManager)) ||
       _hasAnyPermission(const {'USERS:DELETE'});
 
   // Sales invoice action permissions
   bool get _canEditBill =>
       _isOwner ||
-      _isAdmin ||
-      _isManager ||
+      (_currentUserPermissions.isEmpty && (_isAdmin || _isManager)) ||
       _hasAnyPermission(const {'SALES:EDIT_BILL'});
   bool get _canCreateDuplicate =>
       _isOwner ||
-      _isAdmin ||
-      _isManager ||
+      (_currentUserPermissions.isEmpty && (_isAdmin || _isManager)) ||
       _hasAnyPermission(const {'SALES:CREATE_DUPLICATE'});
   bool get _canCancelInvoice =>
       _isOwner ||
-      _isAdmin ||
-      _isManager ||
+      (_currentUserPermissions.isEmpty && (_isAdmin || _isManager)) ||
       _hasAnyPermission(const {'SALES:CANCEL_INVOICE'});
 
   Set<String> get _currentUserPermissions {
+    final authEmail = (_currentUserEmail.isNotEmpty
+            ? _currentUserEmail
+            : widget.user.email)
+        .trim()
+        .toLowerCase();
+    final authId = widget.user.id.trim();
+
+    // 1. Check in local workspace _users list
     for (final user in _users) {
-      if (user.id == _currentUserId) {
-        return user.permissions
-            .map((item) => item.trim().toUpperCase())
-            .toSet();
-      }
-      if (_currentUserEmail.isNotEmpty &&
-          user.email.trim().toLowerCase() == _currentUserEmail.toLowerCase()) {
-        return user.permissions
-            .map((item) => item.trim().toUpperCase())
-            .toSet();
+      final userEmail = user.email.trim().toLowerCase();
+      final userId = user.id.trim();
+
+      if ((authEmail.isNotEmpty && userEmail == authEmail) ||
+          (authId.isNotEmpty && userId == authId) ||
+          (_currentUserId.isNotEmpty &&
+              (userId == _currentUserId ||
+                  user.linkedEmployeeId == _currentUserId))) {
+        if (user.permissions.isNotEmpty) {
+          return user.permissions
+              .map((item) => item.trim().toUpperCase())
+              .toSet();
+        }
       }
     }
+
+    // 2. Fallback to widget.user.permissions (from server auth session)
+    if (widget.user.permissions.isNotEmpty) {
+      return widget.user.permissions
+          .map((item) => item.trim().toUpperCase())
+          .toSet();
+    }
+
     return <String>{};
   }
 
@@ -2995,11 +3009,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   List<_NavItem> _visibleNavItems() {
     List<_NavItem> items;
-    if (_isDelivery) {
-      items = _storeNavItems
-          .where((item) => item.key == 'sales' || item.key == 'dashboard')
-          .toList();
-    } else if (_isOwner || _isAdmin || _isBranchAdmin) {
+    if (_isOwner) {
       items = _storeNavItems;
     } else {
       final permissions = _currentUserPermissions;
@@ -3008,7 +3018,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
         items = _storeNavItems
             .where((item) => allowedByPermission.contains(item.key))
             .toList();
-      } else if (_isManager) {
+      } else if (_isDelivery) {
+        items = _storeNavItems
+            .where((item) => item.key == 'sales' || item.key == 'dashboard')
+            .toList();
+      } else if (_isAdmin || _isBranchAdmin || _isManager) {
         items = _storeNavItems;
       } else {
         const cashierAllowed = {
@@ -3029,10 +3043,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
 
     final isOffline = _subscriptionStatusData?['status'] == 'OFFLINE' ||
-        _subscriptionStatusData?['sync_enabled'] == false;
+        _subscriptionStatusData?['sync_enabled'] == false ||
+        _subscriptionStatusData?['is_offline_mode'] == true;
     if (isOffline) {
-      // Offline mode is single location; multi-branch stock transfers is an online feature
-      return items.where((item) => item.key != 'stockTransfers').toList();
+      // Offline mode uses single location; hide multi-branch locations and stock transfers
+      return items
+          .where((item) =>
+              item.key != 'stockTransfers' && item.key != 'locations')
+          .toList();
     }
 
     return items;
@@ -3058,6 +3076,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   List<String> _accessibleLocationNames(AuthAuthenticated state) {
+    final isOffline = _subscriptionStatusData?['status'] == 'OFFLINE' ||
+        _subscriptionStatusData?['sync_enabled'] == false ||
+        _subscriptionStatusData?['is_offline_mode'] == true;
+    if (isOffline) {
+      final primary = _storeLocation.trim().isEmpty ? 'Main Branch' : _storeLocation.trim();
+      return [primary];
+    }
+
     if (_isBranchAdmin) {
       final assigned = _currentUserAssignedLocations;
       if (assigned.isNotEmpty) {
@@ -7551,6 +7577,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
         if (sidebarOrder.isNotEmpty) {
           final allowedKeys = _defaultSidebarNavOrder.toSet();
           _sidebarNavOrder = sidebarOrder.where(allowedKeys.contains).toList();
+          for (final key in _defaultSidebarNavOrder) {
+            if (!_sidebarNavOrder.contains(key)) {
+              _sidebarNavOrder.add(key);
+            }
+          }
         } else {
           _sidebarNavOrder = List<String>.from(_defaultSidebarNavOrder);
         }
@@ -14746,6 +14777,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildLocationScopePicker(AuthAuthenticated state) {
+    final isOffline = _subscriptionStatusData?['status'] == 'OFFLINE' ||
+        _subscriptionStatusData?['sync_enabled'] == false ||
+        _subscriptionStatusData?['is_offline_mode'] == true;
+    if (isOffline) {
+      return const SizedBox.shrink();
+    }
+
     final colorScheme = Theme.of(context).colorScheme;
     final accessibleLocations = _accessibleLocationNames(state);
 
