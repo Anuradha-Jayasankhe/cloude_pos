@@ -577,6 +577,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   bool _enableShippingCharges = false;
   bool _enableCod = false;
   double _defaultDeliveryFee = 350.0;
+  bool _posAllowCustomerOnAllPayments = true;
   bool _enableAgentCommission = false;
   bool _mobileReloadEnabled = false;
   bool _enableMobileShopFeatures = false;
@@ -7068,6 +7069,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         'enableShippingCharges': _enableShippingCharges,
         'enableCod': _enableCod,
         'defaultDeliveryFee': _defaultDeliveryFee,
+        'posAllowCustomerOnAllPayments': _posAllowCustomerOnAllPayments,
         'enableAgentCommission': _enableAgentCommission,
         'mobileReloadEnabled': _mobileReloadEnabled,
         'enableMobileShopFeatures': _enableMobileShopFeatures,
@@ -7653,6 +7655,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _defaultDeliveryFee =
             (settings['defaultDeliveryFee'] as num?)?.toDouble() ??
             _defaultDeliveryFee;
+        _posAllowCustomerOnAllPayments =
+            settings['posAllowCustomerOnAllPayments'] ??
+            _posAllowCustomerOnAllPayments;
         _enableAgentCommission =
             settings['enableAgentCommission'] ?? _enableAgentCommission;
         _mobileReloadEnabled =

@@ -2109,7 +2109,9 @@ extension _purchase_orders_pageExt on _DashboardScreenState {
                   );
                 }
               } finally {
-                setLocal(() => isProcessing = false);
+                if (ctx.mounted) {
+                  setLocal(() => isProcessing = false);
+                }
               }
             }
 

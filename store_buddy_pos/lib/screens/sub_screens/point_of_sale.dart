@@ -957,6 +957,170 @@ extension _point_of_saleExt on _DashboardScreenState {
     );
   }
 
+  Future<void> _showPosValidationGuideDialog({
+    required String title,
+    required String sinhalaTitle,
+    required String reason,
+    required String guide,
+    required IconData icon,
+    required Color color,
+    String? actionLabel,
+    VoidCallback? onAction,
+  }) async {
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) {
+        final isDark = Theme.of(ctx).brightness == Brightness.dark;
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
+          contentPadding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, color: color, size: 24),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      sinhalaTitle,
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        color: color,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Divider(height: 16),
+              // Reason / හේතුව box
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.help_outline_rounded, size: 15, color: Colors.grey),
+                        const SizedBox(width: 6),
+                        Text(
+                          'මෙම ගැටළුව මතු වූයේ ඇයි? (Why this happened)',
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.bold,
+                            color: isDark ? Colors.grey.shade300 : const Color(0xFF475569),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      reason,
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        height: 1.4,
+                        color: isDark ? Colors.white70 : const Color(0xFF334155),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              // Guide / කළ යුතු දේ box
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: color.withValues(alpha: 0.25)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.lightbulb_outline_rounded, size: 15, color: color),
+                        const SizedBox(width: 6),
+                        Text(
+                          'විසඳුම / කළ යුතු දේ (Action Guide)',
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.bold,
+                            color: color,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      guide,
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        height: 1.4,
+                        fontWeight: FontWeight.w500,
+                        color: isDark ? Colors.white : const Color(0xFF0F172A),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('තේරුම් ගත්තා (Close)'),
+            ),
+            if (actionLabel != null && onAction != null)
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: color,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  onAction();
+                },
+                icon: const Icon(Icons.touch_app_rounded, size: 16),
+                label: Text(actionLabel),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
   Future<bool> _showExtendCreditLimitDialog(
     _CustomerItem customer,
     double currentOutstanding,
@@ -3991,14 +4155,58 @@ extension _point_of_saleExt on _DashboardScreenState {
                         ),
                       ),
                     ],
-                    if (paymentMethod != 'CASH' && paymentMethod != 'CARD') ...[
+                    if (_posAllowCustomerOnAllPayments ||
+                        (paymentMethod != 'CASH' && paymentMethod != 'CARD')) ...[
                       const SizedBox(height: 14),
                       Row(
                         children: [
-                          const Expanded(
-                            child: Text(
-                              'Customer',
-                              style: TextStyle(fontWeight: FontWeight.w600),
+                          Expanded(
+                            child: Row(
+                              children: [
+                                const Text(
+                                  'Customer',
+                                  style: TextStyle(fontWeight: FontWeight.w600),
+                                ),
+                                const SizedBox(width: 8),
+                                if (paymentMethod == 'COD')
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: Colors.deepOrange.withValues(alpha: 0.12),
+                                      borderRadius: BorderRadius.circular(4),
+                                      border: Border.all(color: Colors.deepOrange.withValues(alpha: 0.3)),
+                                    ),
+                                    child: const Text(
+                                      'COD Required',
+                                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.deepOrange),
+                                    ),
+                                  )
+                                else if (_isCreditPaymentMethod(paymentMethod))
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: Colors.blue.withValues(alpha: 0.12),
+                                      borderRadius: BorderRadius.circular(4),
+                                      border: Border.all(color: Colors.blue.withValues(alpha: 0.3)),
+                                    ),
+                                    child: const Text(
+                                      'Credit Required',
+                                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.blue),
+                                    ),
+                                  )
+                                else
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: Colors.grey.withValues(alpha: 0.12),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: const Text(
+                                      'Optional (Cash/Card)',
+                                      style: TextStyle(fontSize: 10, color: Colors.grey),
+                                    ),
+                                  ),
+                              ],
                             ),
                           ),
                           OutlinedButton.icon(
@@ -4156,6 +4364,99 @@ extension _point_of_saleExt on _DashboardScreenState {
                           );
                         },
                       ),
+                      if (_selectedCustomerId == null) ...[
+                        if (paymentMethod == 'COD') ...[
+                          const SizedBox(height: 8),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFFFF7ED),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: const Color(0xFFFDBA74)),
+                            ),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Icon(
+                                  Icons.local_shipping_outlined,
+                                  color: Color(0xFFEA580C),
+                                  size: 18,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: const [
+                                      Text(
+                                        'COD ඇණවුම් සඳහා Customer තොරතුරු අත්‍යවශ්‍යයි',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 11.5,
+                                          color: Color(0xFF9A3412),
+                                        ),
+                                      ),
+                                      SizedBox(height: 2),
+                                      Text(
+                                        'ඩිලිවරි රයිඩර්ට බාරදීමට පාරිභෝගිකයාගේ නම, ලිපිනය සහ දුරකථන අංකය අවශ්‍ය වේ. කරුණාකර Customer තෝරන්න හෝ "+ Add Customer" ඔබන්න.',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: Color(0xFFC2410C),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ] else if (_isCreditPaymentMethod(paymentMethod)) ...[
+                          const SizedBox(height: 8),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFEFF6FF),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: const Color(0xFF93C5FD)),
+                            ),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Icon(
+                                  Icons.account_balance_wallet_outlined,
+                                  color: Color(0xFF2563EB),
+                                  size: 18,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: const [
+                                      Text(
+                                        'ණය (Credit) සඳහා ලියාපදිංචි Customer කෙනෙකු තෝරන්න',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 11.5,
+                                          color: Color(0xFF1E40AF),
+                                        ),
+                                      ),
+                                      SizedBox(height: 2),
+                                      Text(
+                                        'ණය ගිණුම සටහන් කිරීම සඳහා Walk-in Customer භාවිතා කළ නොහැක. කරුණාකර ලියාපදිංචි Customer කෙනෙක් තෝරන්න හෝ ලියාපදිංචි කරන්න.',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: Color(0xFF1D4ED8),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ],
                       if (_selectedCustomerId != null) ...[
                         const SizedBox(height: 8),
                         Container(
@@ -4789,20 +5090,42 @@ extension _point_of_saleExt on _DashboardScreenState {
                               ],
                       ),
                       child: ElevatedButton(
-                        onPressed: (cartItems.isEmpty || isAllLocations)
-                            ? null
-                            : () async {
-                                // Enforce an active cashier session exists before checking out
-                                final activeSession = _activeSessionFor(
-                                  _currentUserId,
-                                );
-                                if (activeSession == null) {
-                                  await _triggerOpenRegisterDialog();
-                                  if (_activeSessionFor(_currentUserId) ==
-                                      null) {
-                                    return;
-                                  }
-                                }
+                        onPressed: () async {
+                          if (isAllLocations) {
+                            await _showPosValidationGuideDialog(
+                              title: 'Branch / Location Selection Required',
+                              sinhalaTitle: 'අලෙවිසැල් ශාඛාව (Branch) තෝරන්න',
+                              reason: 'ඔබ දැනට සිටින්නේ "All Locations" (සියලුම ශාඛා) බැලීමේ ආකාරයේය. තොග අඩු කිරීමට සහ මුදල් රෙජිස්ටරය නිවැරදිව පවත්වා ගැනීමට නිශ්චිත ශාඛාවක් තෝරාගත යුතුය.',
+                              guide: 'ඉහළ ඇති Location dropdown එකෙන් ඔබගේ අලෙවිසැල් ශාඛාව (Branch) තෝරා ගන්න.',
+                              icon: Icons.store_mall_directory_outlined,
+                              color: Colors.deepOrange,
+                            );
+                            return;
+                          }
+
+                          if (cartItems.isEmpty) {
+                            await _showPosValidationGuideDialog(
+                              title: 'Cart is Empty',
+                              sinhalaTitle: 'Cart එක හිස්ව පවතී',
+                              reason: 'Checkout කිරීමට පෙර අවම වශයෙන් එක් භාණ්ඩයක් හෝ Cart එකට ඇතුළත් කළ යුතුය.',
+                              guide: 'භාණ්ඩ ලැයිස්තුවෙන් හෝ Barcode Scanner එක මඟින් භාණ්ඩ Cart එකට එක් කරන්න.',
+                              icon: Icons.shopping_cart_outlined,
+                              color: Colors.amber.shade800,
+                            );
+                            return;
+                          }
+
+                          // Enforce an active cashier session exists before checking out
+                          final activeSession = _activeSessionFor(
+                            _currentUserId,
+                          );
+                          if (activeSession == null) {
+                            await _triggerOpenRegisterDialog();
+                            if (_activeSessionFor(_currentUserId) ==
+                                null) {
+                              return;
+                            }
+                          }
 
                                 final linkedReturnIds = <String>{
                                   for (final line in cartItems)
@@ -4916,13 +5239,13 @@ extension _point_of_saleExt on _DashboardScreenState {
                                     if (deductQtyInBaseUnit >
                                         targetProduct.stock) {
                                       if (!mounted) return;
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(
-                                          content: Text(
-                                            'Cannot complete sale: Insufficient stock for ${line.product.name}. Requested ${_formatQty(line.qty)} ${line.product.measureUnit}, available ${_formatQty(targetProduct.stock)} ${targetProduct.measureUnit}.',
-                                          ),
-                                          backgroundColor: Colors.red,
-                                        ),
+                                      await _showPosValidationGuideDialog(
+                                        title: 'Insufficient Stock Available',
+                                        sinhalaTitle: 'භාණ්ඩ තොග ප්‍රමාණවත් නොවේ',
+                                        reason: '${line.product.name} සඳහා Cart එකේ ඇති ප්‍රමාණය (${_formatQty(line.qty)} ${line.product.measureUnit}), පවතින තොග ප්‍රමාණයට (${_formatQty(targetProduct.stock)} ${targetProduct.measureUnit}) වඩා වැඩිය.',
+                                        guide: 'Cart එකෙහි ඇති අදාළ භාණ්ඩයේ Quantity එක අඩු කරන්න, නැතහොත් Inventory කළමනාකරණය වෙත ගොස් තොග ප්‍රමාණය Update කරන්න.',
+                                        icon: Icons.inventory_2_outlined,
+                                        color: Colors.red,
                                       );
                                       return;
                                     }
@@ -4932,12 +5255,20 @@ extension _point_of_saleExt on _DashboardScreenState {
                                 if (paymentMethod == 'CASH' &&
                                     sanitizedPaidAmount + 0.0001 < grandTotal) {
                                   if (!mounted) return;
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text(
-                                        'Cash sale cannot be completed with partial payment. Use Exact or enter full amount.',
-                                      ),
-                                    ),
+                                  final missingAmt = grandTotal - sanitizedPaidAmount;
+                                  await _showPosValidationGuideDialog(
+                                    title: 'Full Payment Required for Cash Sale',
+                                    sinhalaTitle: 'Cash විකුණුම් සඳහා සම්පූර්ණ මුදල අවශ්‍ය වේ',
+                                    reason: 'Cash ගෙවීම් ක්‍රමයේදී ඉතිරි හිඟ මුදලක් (Due Balance: ${_money(missingAmt)}) තබාගෙන බිල්පත සම්පූර්ණ කළ නොහැක. Cash විකුණුමකදී මුළු මුදලම ලැබිය යුතුය.',
+                                    guide: '1. පාරිභෝගිකයා සම්පූර්ණ මුදල ගෙවූයේ නම් පහත "Set Exact Amount" ඔබන්න.\n2. මුදල කොටසක් පමණක් ගෙවා ඉතිරිය පසුව ගෙවන්නේ නම් Payment Method එක "CREDIT" හෝ "INSTALLMENT" ලෙස මාරු කරන්න.',
+                                    icon: Icons.payments_outlined,
+                                    color: Colors.amber.shade800,
+                                    actionLabel: 'Set Exact Amount (${_money(grandTotal)})',
+                                    onAction: () {
+                                      setState(() {
+                                        _amountPaidController.text = grandTotal.toStringAsFixed(2);
+                                      });
+                                    },
                                   );
                                   return;
                                 }
@@ -4945,12 +5276,13 @@ extension _point_of_saleExt on _DashboardScreenState {
                                 if (paymentMethod == 'CREDIT' &&
                                     outstandingAmount <= 0) {
                                   if (!mounted) return;
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text(
-                                        'Credit sale must have an outstanding balance. Reduce Amount Paid.',
-                                      ),
-                                    ),
+                                  await _showPosValidationGuideDialog(
+                                    title: 'Credit Sale Requires Due Balance',
+                                    sinhalaTitle: 'ණය විකුණුමක ඉතිරි මුදලක් පැවතිය යුතුය',
+                                    reason: 'ඔබ සම්පූර්ණ මුදලම ගෙවීම් ලෙස සටහන් කර ඇත (Amount Paid = ${_money(sanitizedPaidAmount)}). ණය (Credit) ක්‍රමයක් සඳහා ඉතිරි ගෙවීමට ඇති මුදලක් (Due Balance) තිබිය යුතුය.',
+                                    guide: 'සම්පූර්ණ මුදල දැන් ගෙවන්නේ නම් Payment Method එක "CASH" හෝ "CARD" ලෙස මාරු කරන්න, නැතහොත් Amount Paid මුදල අඩු කරන්න.',
+                                    icon: Icons.info_outline,
+                                    color: Colors.blueGrey,
                                   );
                                   return;
                                 }
@@ -4958,12 +5290,13 @@ extension _point_of_saleExt on _DashboardScreenState {
                                 if (paymentMethod == 'INSTALLMENT' &&
                                     outstandingAmount <= 0) {
                                   if (!mounted) return;
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text(
-                                        'Installment sale must have an outstanding balance. Reduce Amount Paid.',
-                                      ),
-                                    ),
+                                  await _showPosValidationGuideDialog(
+                                    title: 'Installment Sale Requires Due Balance',
+                                    sinhalaTitle: 'වාරික (Installment) සඳහා ඉතිරි මුදලක් තිබිය යුතුය',
+                                    reason: 'සම්පූර්ණ මුදලම දැන් ගෙවා ඇති බැවින් වාරික සැලසුමක් සෑදිය නොහැක.',
+                                    guide: 'Payment Method එක "CASH" හෝ "CARD" ලෙස මාරු කරන්න, නැතහොත් මූලික ගෙවීම (Down Payment) අඩු කරන්න.',
+                                    icon: Icons.calendar_month_outlined,
+                                    color: Colors.purple,
                                   );
                                   return;
                                 }
@@ -5002,12 +5335,13 @@ extension _point_of_saleExt on _DashboardScreenState {
 
                                 if (isChequePayment && chequeNumber.isEmpty) {
                                   if (!mounted) return;
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text(
-                                        'Enter cheque number for cheque payment.',
-                                      ),
-                                    ),
+                                  await _showPosValidationGuideDialog(
+                                    title: 'Cheque Number Required',
+                                    sinhalaTitle: 'චෙක්පත් අංකය ඇතුළත් කිරීම අනිවාර්යයි',
+                                    reason: 'චෙක්පත් මඟින් ගෙවීම් කිරීමේදී බැංකු ගිණුම් සමඟ සංසන්දනය කිරීම සඳහා චෙක්පත් අංකය (Cheque Number) සටහන් කිරීම අනිවාර්ය වේ.',
+                                    guide: 'Tender & Payment කොටසේ ඇති "Cheque Number" කොටුවෙහි අදාළ චෙක්පත් අංකය ඇතුළත් කර නැවත Checkout කරන්න.',
+                                    icon: Icons.subtitles_outlined,
+                                    color: Colors.teal,
                                   );
                                   return;
                                 }
@@ -5022,13 +5356,27 @@ extension _point_of_saleExt on _DashboardScreenState {
                                           'walk-in customer';
                                   if (isWalkIn) {
                                     if (!mounted) return;
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text(
-                                          'Customer name and address/phone are required for Cash on Delivery (COD) orders.',
-                                        ),
-                                        backgroundColor: Colors.deepOrange,
-                                      ),
+                                    await _showPosValidationGuideDialog(
+                                      title: 'Customer Details Required for COD',
+                                      sinhalaTitle: 'COD ඇණවුම් සඳහා Customer තොරතුරු අත්‍යවශ්‍යයි',
+                                      reason: 'භාණ්ඩ ගෙදරට ගෙනගොස් මුදල් අයකර ගැනීමට (Cash on Delivery) නම්, ඩිලිවරි රයිඩර්ට බාරදීමට පාරිභෝගිකයාගේ නම, ලිපිනය සහ දුරකථන අංකය අවශ්‍ය වේ. Walk-in Customer සඳහා COD ඇණවුම් නිකුත් කළ නොහැක.',
+                                      guide: 'පහත "Add Customer" බොත්තම ඔබා නව පාරිභෝගිකයෙකුගේ විස්තර ඇතුළත් කරන්න, නැතහොත් පාරිභෝගික ලැයිස්තුවෙන් දැනට සිටින පාරිභෝගිකයෙකු තෝරන්න.',
+                                      icon: Icons.local_shipping_outlined,
+                                      color: Colors.deepOrange,
+                                      actionLabel: 'Add Customer (නව Customer එක් කරන්න)',
+                                      onAction: () async {
+                                        final c = await _showCustomerDialog();
+                                        if (c != null) {
+                                          c.locationId = _activeLocationForWrites;
+                                          setState(() {
+                                            _customers.removeWhere((item) => item.id == c.id);
+                                            _customers.add(c);
+                                            _selectedCustomerId = c.id;
+                                            _posCustomerSearchController.text = '${c.name} (${c.phone.isEmpty ? 'N/A' : c.phone})';
+                                          });
+                                          await _persistWorkspaceData();
+                                        }
+                                      },
                                     );
                                     return;
                                   }
@@ -5037,12 +5385,27 @@ extension _point_of_saleExt on _DashboardScreenState {
                                 if (isCreditSale &&
                                     selectedCustomer.id == 'C001') {
                                   if (!mounted) return;
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                      content: Text(
-                                        'Select a registered customer for credit sales.',
-                                      ),
-                                    ),
+                                  await _showPosValidationGuideDialog(
+                                    title: 'Registered Customer Required for Credit',
+                                    sinhalaTitle: 'ණය විකුණුම් සඳහා ලියාපදිංචි Customer කෙනෙකු තෝරන්න',
+                                    reason: 'ණය මුදල් පසු කලෙකදී අයකර ගැනීම සහ පාරිභෝගිකයාගේ ණය ගිණුම/ණය සීමාව (Credit Limit) සටහන් කිරීම සඳහා ලියාපදිංචි පාරිභෝගික ගිණුමක් අවශ්‍ය වේ. Walk-in Customer සඳහා Credit ලබාදිය නොහැක.',
+                                    guide: 'පහත "Add Customer" බොත්තම ඔබා පාරිභෝගිකයා ලියාපදිංචි කරන්න, නැතහොත් Customer Search කොටුවෙන් පාරිභෝගිකයා තෝරන්න.',
+                                    icon: Icons.account_balance_wallet_outlined,
+                                    color: const Color(0xFF6366F1),
+                                    actionLabel: 'Add Customer (නව Customer එක් කරන්න)',
+                                    onAction: () async {
+                                      final c = await _showCustomerDialog();
+                                      if (c != null) {
+                                        c.locationId = _activeLocationForWrites;
+                                        setState(() {
+                                          _customers.removeWhere((item) => item.id == c.id);
+                                          _customers.add(c);
+                                          _selectedCustomerId = c.id;
+                                          _posCustomerSearchController.text = '${c.name} (${c.phone.isEmpty ? 'N/A' : c.phone})';
+                                        });
+                                        await _persistWorkspaceData();
+                                      }
+                                    },
                                   );
                                   return;
                                 }
@@ -5056,14 +5419,15 @@ extension _point_of_saleExt on _DashboardScreenState {
                                         selectedCustomer,
                                       );
                                   if (!mounted) return;
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(
-                                        overdueDate == null
-                                            ? 'Customer has overdue credit. New credit sale is blocked.'
-                                            : 'Customer has overdue credit since ${_formatDate(overdueDate)}. New credit sale is blocked.',
-                                      ),
-                                    ),
+                                  await _showPosValidationGuideDialog(
+                                    title: 'Customer Has Overdue Credit',
+                                    sinhalaTitle: 'පාරිභෝගිකයාට කල් ඉකුත් වූ ණය පවතී',
+                                    reason: overdueDate == null
+                                        ? 'මෙම පාරිභෝගිකයාට කලින් ලබාගත් ණය සඳහා ගෙවීමේ දිනය ඉක්මවා ගිය (Overdue) හිඟ මුදල් පවතී.'
+                                        : 'මෙම පාරිභෝගිකයාට ${_formatDate(overdueDate)} දින සිට කල් ඉකුත් වූ හිඟ ණය පවතී. පැරණි ණය පියවන තුරු නව ණය විකුණුම් අවහිර කර ඇත.',
+                                    guide: 'පාරිභෝගිකයාගේ පැරණි හිඟ මුදල මුලින්ම පියවා ගැනීමට කටයුතු කරන්න. ඉන්පසු නව ණය බිල්පතක් නිකුත් කළ හැක.',
+                                    icon: Icons.warning_amber_rounded,
+                                    color: Colors.red,
                                   );
                                   return;
                                 }

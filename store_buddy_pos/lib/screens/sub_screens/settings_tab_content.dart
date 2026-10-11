@@ -343,6 +343,108 @@ extension _settings_tab_contentExt on _DashboardScreenState {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.person_search_rounded,
+                          size: 20,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'POS Customer Selection & Checkout Rules',
+                          style: TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Configure whether cashiers can select or add customers on all payment methods or strictly for COD & Credit.',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text(
+                        'Allow Customer Selection on All Payments (Cash, Card, etc.)',
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      subtitle: Text(
+                        _posAllowCustomerOnAllPayments
+                            ? 'Enabled: Customer search and "Add Customer" appear for Cash and Card sales too (Defaults to Walk-in Customer if none chosen).'
+                            : 'Disabled (COD / Credit Only): Customer selection is ONLY displayed when billing with COD, Credit, or Installments. Cash & Card sales stay streamlined.',
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                      value: _posAllowCustomerOnAllPayments,
+                      onChanged: (v) {
+                        setState(() => _posAllowCustomerOnAllPayments = v);
+                        _persistWorkspaceData();
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: Theme.of(context).colorScheme.outlineVariant,
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.info_outline,
+                                size: 15,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                'විකල්පයන් ක්‍රියාත්මක වන ආකාරය (How it works):',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: Theme.of(context).colorScheme.primary,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          const Text(
+                            '• ON කළ විට: Cash හෝ Card මඟින් pay කරන විටත් Customer කෙනෙකු තෝරා ගැනීමට (Search Customer) හෝ අලුත් Customer කෙනෙක් එක් කිරීමට (Add Customer) හැකියාව ලැබේ. පාරිභෝගිකයාගේ නම බිල්පතෙහි සටහන් වේ.\n'
+                            '• OFF කළ විට: Customer තේරීම පෙන්වන්නේ COD (Cash on Delivery) සහ Credit (ණය) බිල්පත් සඳහා පමණි. Cash/Card විකුණුම් සඳහා Walk-in Customer ස්වයංක්‍රීයව තෝරාගෙන තිරය සරලව තබා ගනී.',
+                            style: TextStyle(fontSize: 11.5, height: 1.4),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Card(
+              elevation: 0,
+              color: Theme.of(context).colorScheme.surfaceContainerLow,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     Text(
                       'Currency & Tax',
                       style: TextStyle(
