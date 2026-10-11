@@ -55,7 +55,7 @@ class _ExpensesPageState extends State<ExpensesPage> {
     'INTERNET': Color(0xFF8B5CF6),
     'MAINTENANCE': Color(0xFFEF4444),
     'STOCK_PURCHASE': Color(0xFF059669),
-    'OTHER': Color(0xFF6B7280),
+    'OTHER': Color(0xFF64748B),
   };
 
   static const _categoryIcons = {
@@ -268,11 +268,48 @@ class _ExpensesPageState extends State<ExpensesPage> {
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
                     value: paymentMethod,
-                    decoration: _inputDec('Payment Method'),
+                    decoration: _inputDec('Payment Method / Source'),
                     items: const [
-                      DropdownMenuItem(value: 'CASH', child: Text('CASH')),
-                      DropdownMenuItem(value: 'CARD', child: Text('CARD')),
-                      DropdownMenuItem(value: 'CHEQUE', child: Text('CHEQUE')),
+                      DropdownMenuItem(
+                        value: 'CASH',
+                        child: Row(
+                          children: [
+                            Icon(Icons.point_of_sale_rounded, size: 16, color: Color(0xFF10B981)),
+                            SizedBox(width: 8),
+                            Text('CASH (Drawer Till / මුදල් ලාච්චුවෙන්)'),
+                          ],
+                        ),
+                      ),
+                      DropdownMenuItem(
+                        value: 'BANK_TRANSFER',
+                        child: Row(
+                          children: [
+                            Icon(Icons.account_balance_rounded, size: 16, color: Color(0xFF6366F1)),
+                            SizedBox(width: 8),
+                            Text('BANK TRANSFER (Bank Ledger)'),
+                          ],
+                        ),
+                      ),
+                      DropdownMenuItem(
+                        value: 'CARD',
+                        child: Row(
+                          children: [
+                            Icon(Icons.credit_card_rounded, size: 16, color: Color(0xFF3B82F6)),
+                            SizedBox(width: 8),
+                            Text('CARD (Bank Ledger)'),
+                          ],
+                        ),
+                      ),
+                      DropdownMenuItem(
+                        value: 'CHEQUE',
+                        child: Row(
+                          children: [
+                            Icon(Icons.fact_check_outlined, size: 16, color: Color(0xFFF59E0B)),
+                            SizedBox(width: 8),
+                            Text('CHEQUE (Bank Ledger)'),
+                          ],
+                        ),
+                      ),
                     ],
                     onChanged: (v) => setS(() => paymentMethod = v ?? 'CASH'),
                   ),
@@ -296,6 +333,8 @@ class _ExpensesPageState extends State<ExpensesPage> {
                 if (!formKey.currentState!.validate()) return;
                 final id = existing?.id ?? _uuid();
                 final amt = double.parse(amountCtrl.text);
+                final isCash = paymentMethod == 'CASH';
+                final notePrefix = isCash ? 'CASH|drawer|' : '${paymentMethod}|';
                 final companion = db.ExpensesCompanion(
                   id: Value(id),
                   tenantId: Value(widget.tenantId),
@@ -305,7 +344,7 @@ class _ExpensesPageState extends State<ExpensesPage> {
                   locationId: Value(widget.locationId),
                   employeeId: Value(selectedEmployeeId),
                   notes: Value(
-                    '${paymentMethod}|${notesCtrl.text.trim()}',
+                    '$notePrefix${notesCtrl.text.trim()}',
                   ),
                   expenseDate: Value(selectedDate),
                   synced: const Value(false),
@@ -319,13 +358,20 @@ class _ExpensesPageState extends State<ExpensesPage> {
                   id,
                 );
 
-                // Deduct from bank ledger if payment method is not CASH
-                if (paymentMethod != 'CASH') {
+                // Deduct from bank or cash drawer ledger
+                if (isCash) {
+                  widget.onAddBankTransaction?.call(
+                    amt,
+                    'DRAWER_EXPENSE',
+                    id,
+                    'Cash Drawer Expense: ${descCtrl.text.trim()} ($category)',
+                  );
+                } else {
                   widget.onAddBankTransaction?.call(
                     amt,
                     'EXPENSE_PAYMENT',
                     id,
-                    'General Expense: ${descCtrl.text.trim()}',
+                    'Bank Expense: ${descCtrl.text.trim()} ($category)',
                   );
                 }
 
@@ -385,7 +431,18 @@ class _ExpensesPageState extends State<ExpensesPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     final total = _expenses.fold(0.0, (s, e) => s + e.amount);
+    double totalCashExpenses = 0.0;
+    double totalBankExpenses = 0.0;
+    for (final e in _expenses) {
+      final pm = _getExpensePaymentMethod(e.notes);
+      if (pm == 'CASH') {
+        totalCashExpenses += e.amount;
+      } else {
+        totalBankExpenses += e.amount;
+      }
+    }
     final sym = widget.currencySymbol;
 
     return LayoutBuilder(
@@ -548,27 +605,45 @@ class _ExpensesPageState extends State<ExpensesPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-              // â”€â”€ Header â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+              // Header
               header,
               const SizedBox(height: 20),
           
-              // â”€â”€ Summary Cards â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+              // Summary Cards
               _loading
                   ? const Center(child: CircularProgressIndicator())
                   : Column(
                       children: [
-                        // Total + category breakdown
+                        // Total + category breakdown cards
                         Wrap(
                           spacing: 12,
                           runSpacing: 12,
                           children: [
                             SizedBox(
-                              width: compact ? double.infinity : 280,
+                              width: compact ? double.infinity : 260,
                               child: _summaryCard(
                                 'Total Expenses',
                                 '$sym ${total.toStringAsFixed(2)}',
                                 Icons.account_balance_wallet_outlined,
                                 const Color(0xFF4F46E5),
+                              ),
+                            ),
+                            SizedBox(
+                              width: compact ? double.infinity : 240,
+                              child: _summaryCard(
+                                'Paid from Cash Drawer',
+                                '$sym ${totalCashExpenses.toStringAsFixed(2)}',
+                                Icons.point_of_sale_rounded,
+                                const Color(0xFF10B981),
+                              ),
+                            ),
+                            SizedBox(
+                              width: compact ? double.infinity : 240,
+                              child: _summaryCard(
+                                'Paid from Bank / Card',
+                                '$sym ${totalBankExpenses.toStringAsFixed(2)}',
+                                Icons.account_balance_rounded,
+                                const Color(0xFF3B82F6),
                               ),
                             ),
                             SizedBox(
@@ -580,33 +655,17 @@ class _ExpensesPageState extends State<ExpensesPage> {
                                 const Color(0xFF0EA5E9),
                               ),
                             ),
-                            ..._categoryTotals.entries
-                                .take(3)
-                                .map(
-                                  (e) => SizedBox(
-                                    width: compact ? double.infinity : 240,
-                                    child: _summaryCard(
-                                      e.key,
-                                      '$sym ${e.value.toStringAsFixed(2)}',
-                                      _categoryIcons[e.key] ??
-                                          Icons.receipt_outlined,
-                                      _categoryColors[e.key] ?? Colors.grey,
-                                    ),
-                                  ),
-                                ),
                           ],
                         ),
                         const SizedBox(height: 16),
           
-                        // â”€â”€ Category filter chips & Pie Chart â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+                        // Category filter chips & Donut Chart
                         Flex(
                           direction: compact ? Axis.vertical : Axis.horizontal,
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            SizedBox(
-                              width: compact
-                                  ? double.infinity
-                                  : constraints.maxWidth * 0.6,
+                            Expanded(
+                              flex: compact ? 0 : 3,
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
@@ -639,7 +698,7 @@ class _ExpensesPageState extends State<ExpensesPage> {
                                                     : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
                                               )
                                             : null,
-                                        backgroundColor: Theme.of(context).brightness == Brightness.dark
+                                        backgroundColor: isDark
                                             ? Colors.white.withValues(alpha: 0.06)
                                             : Colors.black.withValues(alpha: 0.04),
                                         selectedColor: const Color(0xFF4F46E5),
@@ -651,7 +710,7 @@ class _ExpensesPageState extends State<ExpensesPage> {
                                         side: BorderSide(
                                           color: selected
                                               ? const Color(0xFF4F46E5)
-                                              : (Theme.of(context).brightness == Brightness.dark
+                                              : (isDark
                                                   ? Colors.white.withValues(alpha: 0.12)
                                                   : Colors.grey.shade300),
                                           width: 1,
@@ -665,33 +724,152 @@ class _ExpensesPageState extends State<ExpensesPage> {
                                 ],
                               ),
                             ),
-                            if (total > 0)
-                              SizedBox(
-                                width: compact ? double.infinity : 260,
-                                child: Column(
-                                  children: [
-                                    const SizedBox(height: 16),
-                                    const Text(
-                                      'Expense Breakdown',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.w600,
-                                      ),
+                            if (total > 0) ...[
+                              if (compact) const SizedBox(height: 16) else const SizedBox(width: 16),
+                              Container(
+                                width: compact ? double.infinity : 380,
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: theme.colorScheme.surface,
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(
+                                    color: isDark ? const Color(0xFF1E2D45) : const Color(0xFFE2E8F0),
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.04),
+                                      blurRadius: 10,
+                                      offset: const Offset(0, 3),
                                     ),
-                                    const SizedBox(height: 16),
-                                    SizedBox(
-                                      height: 120,
-                                      child: CustomPaint(
-                                        size: const Size.square(120),
-                                        painter: _PieChartPainter(
-                                          _categoryTotals,
-                                          _categoryColors,
-                                          total,
+                                  ],
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        const Text(
+                                          'Expense Breakdown',
+                                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5),
                                         ),
-                                      ),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFF6366F1).withValues(alpha: 0.12),
+                                            borderRadius: BorderRadius.circular(6),
+                                          ),
+                                          child: Text(
+                                            '${_categoryTotals.length} Categories',
+                                            style: const TextStyle(
+                                              fontSize: 10.5,
+                                              fontWeight: FontWeight.bold,
+                                              color: Color(0xFF6366F1),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 14),
+                                    Row(
+                                      children: [
+                                        SizedBox(
+                                          width: 110,
+                                          height: 110,
+                                          child: Stack(
+                                            alignment: Alignment.center,
+                                            children: [
+                                              CustomPaint(
+                                                size: const Size.square(110),
+                                                painter: _DonutChartPainter(
+                                                  _categoryTotals,
+                                                  _categoryColors,
+                                                  total,
+                                                  isDark: isDark,
+                                                ),
+                                              ),
+                                              Column(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  Text(
+                                                    'TOTAL',
+                                                    style: TextStyle(
+                                                      fontSize: 8.5,
+                                                      fontWeight: FontWeight.bold,
+                                                      color: isDark ? Colors.grey[400] : Colors.grey[600],
+                                                      letterSpacing: 0.5,
+                                                    ),
+                                                  ),
+                                                  Text(
+                                                    '$sym ${total > 999999 ? "${(total / 1000).toStringAsFixed(0)}k" : total.toStringAsFixed(0)}',
+                                                    style: const TextStyle(
+                                                      fontSize: 12.5,
+                                                      fontWeight: FontWeight.bold,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        const SizedBox(width: 14),
+                                        Expanded(
+                                          child: Column(
+                                            children: (_categoryTotals.entries.toList()
+                                                  ..sort((a, b) => b.value.compareTo(a.value)))
+                                                .take(4)
+                                                .map((entry) {
+                                              final pct = (entry.value / total) * 100;
+                                              final c = _categoryColors[entry.key] ?? const Color(0xFF6366F1);
+                                              return Padding(
+                                                padding: const EdgeInsets.symmetric(vertical: 3),
+                                                child: Column(
+                                                  children: [
+                                                    Row(
+                                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                                      children: [
+                                                        Row(
+                                                          children: [
+                                                            Container(
+                                                              width: 7,
+                                                              height: 7,
+                                                              decoration: BoxDecoration(color: c, shape: BoxShape.circle),
+                                                            ),
+                                                            const SizedBox(width: 5),
+                                                            Text(
+                                                              entry.key,
+                                                              style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+                                                            ),
+                                                          ],
+                                                        ),
+                                                        Text(
+                                                          '${pct.toStringAsFixed(0)}% ($sym ${entry.value.toStringAsFixed(0)})',
+                                                          style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                    const SizedBox(height: 3),
+                                                    ClipRRect(
+                                                      borderRadius: BorderRadius.circular(3),
+                                                      child: LinearProgressIndicator(
+                                                        value: pct / 100,
+                                                        minHeight: 4,
+                                                        backgroundColor: isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05),
+                                                        valueColor: AlwaysStoppedAnimation<Color>(c),
+                                                      ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              );
+                                            }).toList(),
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ],
                                 ),
                               ),
+                            ],
                           ],
                         ),
                         const SizedBox(height: 16),
@@ -1029,24 +1207,38 @@ class _ExpensesPageState extends State<ExpensesPage> {
   }
 }
 
-class _PieChartPainter extends CustomPainter {
+class _DonutChartPainter extends CustomPainter {
   final Map<String, double> categoryTotals;
   final Map<String, Color> categoryColors;
   final double total;
+  final bool isDark;
 
-  _PieChartPainter(this.categoryTotals, this.categoryColors, this.total);
+  _DonutChartPainter(
+    this.categoryTotals,
+    this.categoryColors,
+    this.total, {
+    this.isDark = false,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
     if (total == 0) return;
-    double startRadian = -math.pi / 2;
-    final rect = Rect.fromCenter(
-      center: Offset(size.width / 2, size.height / 2),
-      width: size.width,
-      height: size.height,
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = size.width / 2;
+    const strokeWidth = 18.0;
+    final rect = Rect.fromCircle(
+      center: center,
+      radius: radius - (strokeWidth / 2),
     );
 
-    // Sort categories by total to draw larger slices first (optional but looks nice)
+    // Draw background track ring
+    final bgPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth
+      ..color = isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05);
+    canvas.drawCircle(center, radius - (strokeWidth / 2), bgPaint);
+
+    double startRadian = -math.pi / 2;
     final sortedEntries = categoryTotals.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
 
@@ -1054,17 +1246,21 @@ class _PieChartPainter extends CustomPainter {
       if (entry.value <= 0) continue;
       final sweepRadian = (entry.value / total) * 2 * math.pi;
       final paint = Paint()
-        ..style = PaintingStyle.fill
-        ..color = categoryColors[entry.key] ?? Colors.grey;
-      canvas.drawArc(rect, startRadian, sweepRadian, true, paint);
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = strokeWidth
+        ..strokeCap = sortedEntries.length == 1 ? StrokeCap.round : StrokeCap.butt
+        ..color = categoryColors[entry.key] ?? const Color(0xFF6366F1);
+
+      canvas.drawArc(rect, startRadian, sweepRadian, false, paint);
       startRadian += sweepRadian;
     }
   }
 
   @override
-  bool shouldRepaint(covariant _PieChartPainter oldDelegate) {
+  bool shouldRepaint(covariant _DonutChartPainter oldDelegate) {
     return oldDelegate.total != total ||
-        oldDelegate.categoryTotals != categoryTotals;
+        oldDelegate.categoryTotals != categoryTotals ||
+        oldDelegate.isDark != isDark;
   }
 }
 
@@ -1073,16 +1269,20 @@ String _getExpensePaymentMethod(String? notesVal) {
   if (notes.startsWith('CASH|')) return 'CASH';
   if (notes.startsWith('CARD|')) return 'CARD';
   if (notes.startsWith('CHEQUE|')) return 'CHEQUE';
+  if (notes.startsWith('BANK_TRANSFER|')) return 'BANK_TRANSFER';
   if (notes.toLowerCase().contains('cash')) return 'CASH';
   if (notes.toLowerCase().contains('card')) return 'CARD';
   if (notes.toLowerCase().contains('cheque')) return 'CHEQUE';
+  if (notes.toLowerCase().contains('bank')) return 'BANK_TRANSFER';
   return 'CASH';
 }
 
 String _getExpenseNotes(String? notesVal) {
   final notes = notesVal ?? '';
+  if (notes.startsWith('CASH|drawer|')) return notes.substring(12);
   if (notes.startsWith('CASH|')) return notes.substring(5);
   if (notes.startsWith('CARD|')) return notes.substring(5);
   if (notes.startsWith('CHEQUE|')) return notes.substring(7);
+  if (notes.startsWith('BANK_TRANSFER|')) return notes.substring(14);
   return notes;
 }

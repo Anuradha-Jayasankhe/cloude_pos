@@ -59,6 +59,85 @@ extension _purchase_orders_pageExt on _DashboardScreenState {
     }
   }
 
+  Widget _buildSettlementOption({
+    required String title,
+    required String subtitle,
+    required String badge,
+    required Color badgeColor,
+    required IconData icon,
+    required bool isSelected,
+    required bool isDark,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? AppTheme.brandIndigo.withValues(alpha: 0.12)
+              : (isDark ? const Color(0xFF1E293B) : Colors.white),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: isSelected
+                ? AppTheme.brandIndigo
+                : (isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1)),
+            width: isSelected ? 2 : 1,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  icon,
+                  size: 16,
+                  color: isSelected ? AppTheme.brandIndigo : Colors.grey,
+                ),
+                const Spacer(),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: badgeColor.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    badge,
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      color: badgeColor,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              title,
+              style: TextStyle(
+                fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                fontSize: 12.5,
+                color: isSelected ? AppTheme.brandIndigo : null,
+              ),
+            ),
+            Text(
+              subtitle,
+              style: TextStyle(
+                fontSize: 10.5,
+                color: isDark ? Colors.grey[400] : Colors.grey[600],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   // ─── main page ──────────────────────────────────────────────────────────────
 
   Widget _buildPurchaseOrdersPage() {
@@ -626,11 +705,45 @@ extension _purchase_orders_pageExt on _DashboardScreenState {
                     po.paymentMethod,
                     style: TextStyle(
                       color: _paymentColor(po.paymentMethod),
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
                     ),
                   ),
                 ),
+                if (po.status == 'RECEIVED' && po.amountDue > 0) ...[
+                  const SizedBox(height: 6),
+                  InkWell(
+                    onTap: () => _showPayNowDialog(po),
+                    borderRadius: BorderRadius.circular(6),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF059669),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.payment_rounded,
+                            size: 11,
+                            color: Colors.white,
+                          ),
+                          SizedBox(width: 4),
+                          Text(
+                            'Pay Now',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 10.5,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ),
           ],
@@ -688,6 +801,7 @@ extension _purchase_orders_pageExt on _DashboardScreenState {
     ];
 
     String searchQuery = '';
+    bool filterBySupplierOnly = true;
 
     return showGeneralDialog<_PurchaseOrderItem>(
       context: context,
@@ -733,12 +847,42 @@ extension _purchase_orders_pageExt on _DashboardScreenState {
                   )
                 : null;
 
+            final hasSupplier =
+                validSupplierId != null && validSupplierId.isNotEmpty;
+            final supplierName = supplier?.name.trim().toLowerCase() ?? '';
+
+            bool isLinkedToThisSupplier(_ProductItem p) {
+              if (!hasSupplier) return false;
+              final pSup = p.supplierId.trim().toLowerCase();
+              return pSup == validSupplierId.toLowerCase() ||
+                  (supplierName.isNotEmpty && pSup == supplierName);
+            }
+
+            final supplierProductsCount = hasSupplier
+                ? _products.where((p) => isLinkedToThisSupplier(p)).length
+                : 0;
+
+            final effectiveFilterBySupplier =
+                filterBySupplierOnly && hasSupplier && supplierProductsCount > 0;
+
             final sourceProducts = _products.where((p) {
+              if (effectiveFilterBySupplier && !isLinkedToThisSupplier(p)) {
+                return false;
+              }
               final q = searchQuery.trim().toLowerCase();
               if (q.isEmpty) return true;
               return p.name.toLowerCase().contains(q) ||
                   p.barcode.toLowerCase().contains(q);
             }).toList();
+
+            // When viewing all products, prioritize linked items at top
+            if (!effectiveFilterBySupplier && hasSupplier) {
+              sourceProducts.sort((a, b) {
+                final aLinked = isLinkedToThisSupplier(a) ? 0 : 1;
+                final bLinked = isLinkedToThisSupplier(b) ? 0 : 1;
+                return aLinked.compareTo(bLinked);
+              });
+            }
 
             final totalCost = lines.fold<double>(0, (s, l) => s + l.lineTotal);
 
@@ -847,8 +991,10 @@ extension _purchase_orders_pageExt on _DashboardScreenState {
                                   ),
                                 )
                                 .toList(),
-                            onChanged: (v) =>
-                                setLocal(() => selectedSupplierId = v),
+                            onChanged: (v) => setLocal(() {
+                              selectedSupplierId = v;
+                              filterBySupplierOnly = true;
+                            }),
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -872,6 +1018,7 @@ extension _purchase_orders_pageExt on _DashboardScreenState {
                                 );
                                 setLocal(() {
                                   selectedSupplierId = newSupplier.id;
+                                  filterBySupplierOnly = true;
                                 });
                               }
                             },
@@ -991,6 +1138,67 @@ extension _purchase_orders_pageExt on _DashboardScreenState {
                         ),
                       ],
                     ),
+                    if (hasSupplier) ...[
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 6,
+                        children: [
+                          ChoiceChip(
+                            avatar: Icon(
+                              Icons.link_rounded,
+                              size: 15,
+                              color: effectiveFilterBySupplier
+                                  ? Colors.white
+                                  : AppTheme.brandIndigo,
+                            ),
+                            label: Text(
+                              '${supplier?.name ?? "Supplier"} Items ($supplierProductsCount)',
+                            ),
+                            selected: effectiveFilterBySupplier,
+                            selectedColor: AppTheme.brandIndigo,
+                            labelStyle: TextStyle(
+                              fontSize: 12,
+                              fontWeight: effectiveFilterBySupplier
+                                  ? FontWeight.w700
+                                  : FontWeight.w500,
+                              color: effectiveFilterBySupplier
+                                  ? Colors.white
+                                  : (isDark ? Colors.white70 : Colors.black87),
+                            ),
+                            onSelected: (val) {
+                              if (val) setLocal(() => filterBySupplierOnly = true);
+                            },
+                          ),
+                          ChoiceChip(
+                            avatar: Icon(
+                              Icons.inventory_2_outlined,
+                              size: 15,
+                              color: !effectiveFilterBySupplier
+                                  ? Colors.white
+                                  : Colors.grey,
+                            ),
+                            label: Text(
+                              'All Shop Products (${_products.length})',
+                            ),
+                            selected: !effectiveFilterBySupplier,
+                            selectedColor: AppTheme.brandIndigo,
+                            labelStyle: TextStyle(
+                              fontSize: 12,
+                              fontWeight: !effectiveFilterBySupplier
+                                  ? FontWeight.w700
+                                  : FontWeight.w500,
+                              color: !effectiveFilterBySupplier
+                                  ? Colors.white
+                                  : (isDark ? Colors.white70 : Colors.black87),
+                            ),
+                            onSelected: (val) {
+                              if (val) setLocal(() => filterBySupplierOnly = false);
+                            },
+                          ),
+                        ],
+                      ),
+                    ],
                     const SizedBox(height: 8),
                     TextField(
                       controller: searchCtrl,
@@ -1100,7 +1308,9 @@ extension _purchase_orders_pageExt on _DashboardScreenState {
                                     MainAxisAlignment.spaceBetween,
                                 children: [
                                   Text(
-                                    'Shop Catalogue Products (${sourceProducts.length})',
+                                    effectiveFilterBySupplier
+                                        ? 'Supplier Items: ${supplier?.name ?? ""} (${sourceProducts.length})'
+                                        : 'Shop Catalogue Products (${sourceProducts.length})',
                                     style: TextStyle(
                                       fontSize: 11,
                                       fontWeight: FontWeight.w600,
@@ -1128,29 +1338,100 @@ extension _purchase_orders_pageExt on _DashboardScreenState {
                             Padding(
                               padding: const EdgeInsets.all(16),
                               child: Center(
-                                child: Text(
-                                  searchQuery.trim().isEmpty
-                                      ? 'No products found in shop catalogue. Tap "Add Manually" above.'
-                                      : 'No matching products found. Tap "Create & Add Product" above.',
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: isDark
-                                        ? Colors.grey[400]
-                                        : Colors.grey[600],
-                                  ),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      searchQuery.trim().isEmpty
+                                          ? (effectiveFilterBySupplier
+                                              ? 'No products currently linked to ${supplier?.name ?? "this supplier"}.'
+                                              : 'No products found in shop catalogue. Tap "Add Manually" above.')
+                                          : 'No matching products found. Tap "Create & Add Product" above.',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: isDark
+                                            ? Colors.grey[400]
+                                            : Colors.grey[600],
+                                      ),
+                                    ),
+                                    if (effectiveFilterBySupplier && supplierProductsCount == 0) ...[
+                                      const SizedBox(height: 8),
+                                      OutlinedButton.icon(
+                                        onPressed: () => setLocal(
+                                          () => filterBySupplierOnly = false,
+                                        ),
+                                        icon: const Icon(
+                                          Icons.inventory_2_outlined,
+                                          size: 14,
+                                        ),
+                                        label: const Text(
+                                          'Show All Shop Products',
+                                          style: TextStyle(fontSize: 12),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
                                 ),
                               ),
                             )
                           else
                             ...sourceProducts.take(50).map((product) {
+                              final isLinked = isLinkedToThisSupplier(product);
                               return ListTile(
                                 dense: true,
-                                title: Text(
-                                  product.name,
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 12.5,
-                                  ),
+                                title: Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        product.name,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w600,
+                                          fontSize: 12.5,
+                                        ),
+                                      ),
+                                    ),
+                                    if (isLinked) ...[
+                                      const SizedBox(width: 6),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 6,
+                                          vertical: 2,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: const Color(
+                                            0xFF059669,
+                                          ).withValues(alpha: 0.12),
+                                          borderRadius:
+                                              BorderRadius.circular(4),
+                                          border: Border.all(
+                                            color: const Color(
+                                              0xFF059669,
+                                            ).withValues(alpha: 0.3),
+                                          ),
+                                        ),
+                                        child: const Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(
+                                              Icons.link_rounded,
+                                              size: 10,
+                                              color: Color(0xFF059669),
+                                            ),
+                                            SizedBox(width: 3),
+                                            Text(
+                                              'Linked',
+                                              style: TextStyle(
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.w700,
+                                                color: Color(0xFF059669),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ],
                                 ),
                                 subtitle: Text(
                                   'Stock: ${product.stock}  •  Cost: ${_money(product.costPrice ?? product.price)}  •  Sell: ${_money(product.price)}',
@@ -1354,21 +1635,25 @@ extension _purchase_orders_pageExt on _DashboardScreenState {
           customCatControllers[line] = TextEditingController();
         }
 
-        String selectedPaymentMethod = po.paymentMethod == 'CREDIT'
+        // Settlement Plan: 'FULL', 'PARTIAL', 'CREDIT'
+        String settlementPlan = po.paymentMethod == 'CREDIT'
             ? 'CREDIT'
+            : (po.paymentMethod == 'PARTIAL' ? 'PARTIAL' : 'FULL');
+        // Payment Source for paid portion: 'CASH', 'BANK_TRANSFER', 'CARD', 'CHEQUE'
+        String paymentSource = (po.paymentMethod == 'CARD' ||
+                po.paymentMethod == 'CHEQUE' ||
+                po.paymentMethod == 'BANK_TRANSFER')
+            ? po.paymentMethod
             : 'CASH';
-        double partialAmount = po.amountPaid > 0 ? po.amountPaid : po.amount;
+
+        double partialAmount = po.amountPaid > 0 ? po.amountPaid : (po.amount / 2);
         final partialCtrl = TextEditingController(
-          text: partialAmount.toStringAsFixed(2),
+          text: (po.amountPaid > 0 ? po.amountPaid : (po.amount / 2)).toStringAsFixed(2),
         );
         final paymentDueDateCtrl = TextEditingController(
           text: po.paymentDueDate ?? '',
         );
         final chequeNumberCtrl = TextEditingController();
-
-        // Extra details for partial portion
-        String partialPaidPortionMethod = 'CASH';
-        final partialChequeNumberCtrl = TextEditingController();
 
         bool showReceivePanel = false;
         bool isProcessing = false;
@@ -1416,46 +1701,35 @@ extension _purchase_orders_pageExt on _DashboardScreenState {
                 double paid = 0;
                 double due = 0;
                 String noteText = '';
+                String finalPaymentMethod = 'CASH';
 
-                if (selectedPaymentMethod == 'CASH') {
+                if (settlementPlan == 'FULL') {
                   paid = po.amount;
                   due = 0;
-                  noteText = 'Paid via Cash';
-                } else if (selectedPaymentMethod == 'CARD') {
-                  paid = po.amount;
-                  due = 0;
-                  noteText = 'Paid via Card';
-                } else if (selectedPaymentMethod == 'CHEQUE') {
-                  paid = po.amount;
-                  due = 0;
-                  noteText = 'Paid via Cheque #${chequeNumberCtrl.text.trim()}';
-                } else if (selectedPaymentMethod == 'CREDIT') {
+                  finalPaymentMethod = paymentSource;
+                  if (paymentSource == 'CHEQUE') {
+                    noteText = 'Full payment via Cheque #${chequeNumberCtrl.text.trim()}';
+                  } else {
+                    noteText = 'Full payment via $paymentSource';
+                  }
+                } else if (settlementPlan == 'CREDIT') {
                   paid = 0;
                   due = po.amount;
-                  noteText = 'Outstanding Balance';
-                } else if (selectedPaymentMethod == 'INSTALLMENT' ||
-                    selectedPaymentMethod == 'PARTIAL') {
-                  // Partial or Installment
-                  paid = double.tryParse(partialCtrl.text) ?? 0;
-                  if (paid > po.amount) paid = po.amount;
-                  due = po.amount - paid;
-                  if (due < 0) due = 0;
-
-                  final methodName =
-                      selectedPaymentMethod == 'INSTALLMENT'
-                          ? 'Installment'
-                          : 'Partial';
-                  if (partialPaidPortionMethod == 'CHEQUE') {
+                  finalPaymentMethod = 'CREDIT';
+                  noteText = 'Purchased on Credit (Pay Later)';
+                } else {
+                  // PARTIAL
+                  final rawPaid = double.tryParse(partialCtrl.text) ?? 0;
+                  paid = rawPaid.clamp(0.0, po.amount);
+                  due = (po.amount - paid).clamp(0.0, po.amount);
+                  finalPaymentMethod = paid == 0 ? 'CREDIT' : (due == 0 ? paymentSource : 'PARTIAL');
+                  if (paymentSource == 'CHEQUE') {
                     noteText =
-                        '$methodName Payment: Paid ${_money(paid)} via Cheque #${partialChequeNumberCtrl.text.trim()}, remainder ${_money(due)} on Credit';
+                        'Partial payment: Paid ${_money(paid)} via Cheque #${chequeNumberCtrl.text.trim()}, remainder ${_money(due)} on Credit';
                   } else {
                     noteText =
-                        '$methodName Payment: Paid ${_money(paid)} via $partialPaidPortionMethod, remainder ${_money(due)} on Credit';
+                        'Partial payment: Paid ${_money(paid)} via $paymentSource, remainder ${_money(due)} on Credit';
                   }
-                } else {
-                  paid = po.amount;
-                  due = 0;
-                  noteText = 'Paid via $selectedPaymentMethod';
                 }
 
                 final targetLocation = po.locationId.trim().isEmpty
@@ -1475,7 +1749,7 @@ extension _purchase_orders_pageExt on _DashboardScreenState {
                 if (liveIdx >= 0) {
                   final livePo = _purchaseOrders[liveIdx];
                   livePo.status = 'RECEIVED';
-                  livePo.paymentMethod = selectedPaymentMethod;
+                  livePo.paymentMethod = finalPaymentMethod;
                   livePo.amountPaid = paid;
                   livePo.amountDue = due;
                   livePo.receivedAt = nowLocal;
@@ -1485,7 +1759,7 @@ extension _purchase_orders_pageExt on _DashboardScreenState {
                   }
                   // Sync dialog's local reference
                   po.status = 'RECEIVED';
-                  po.paymentMethod = selectedPaymentMethod;
+                  po.paymentMethod = finalPaymentMethod;
                   po.amountPaid = paid;
                   po.amountDue = due;
                   po.receivedAt = livePo.receivedAt;
@@ -1493,7 +1767,7 @@ extension _purchase_orders_pageExt on _DashboardScreenState {
                   po.paymentDueDate = livePo.paymentDueDate;
                 } else {
                   po.status = 'RECEIVED';
-                  po.paymentMethod = selectedPaymentMethod;
+                  po.paymentMethod = finalPaymentMethod;
                   po.amountPaid = paid;
                   po.amountDue = due;
                   po.receivedAt = nowLocal;
@@ -1712,6 +1986,7 @@ extension _purchase_orders_pageExt on _DashboardScreenState {
                 setState(() {});
 
                 // 3. Create expense record for paid amount
+                // 3. Create expense record for paid amount
                 String? createdExpenseId;
                 String? createdBankTxId;
                 if (paid > 0 && _appDatabase != null) {
@@ -1727,6 +2002,14 @@ extension _purchase_orders_pageExt on _DashboardScreenState {
                       email: '',
                     ),
                   );
+
+                  final isCash = paymentSource == 'CASH';
+                  final notePrefix = isCash
+                      ? 'CASH|drawer|'
+                      : (paymentSource == 'CHEQUE'
+                          ? 'CHEQUE|Cheque #${chequeNumberCtrl.text.trim()}|'
+                          : '$paymentSource|');
+
                   await _appDatabase!.insertExpense(
                     db.ExpensesCompanion(
                       id: Value(expenseId),
@@ -1737,27 +2020,51 @@ extension _purchase_orders_pageExt on _DashboardScreenState {
                       ),
                       amount: Value(paid),
                       locationId: Value(targetLocation),
-                      notes: Value('PO ${po.id} — $noteText'),
+                      notes: Value('$notePrefix$noteText'),
                       expenseDate: Value(DateTime.now()),
+                      synced: const Value(false),
                       createdAt: Value(DateTime.now()),
+                      updatedAt: Value(DateTime.now()),
                     ),
                   );
 
-                  // Deduct from bank ledger
-                  final bankTxId = 'TX-BANK-${DateTime.now().millisecondsSinceEpoch}';
-                  createdBankTxId = bankTxId;
-                  _bankAccountBalance -= paid;
-                  _bankTransactions.insert(
-                    0,
-                    _BankTransaction(
-                      id: bankTxId,
-                      type: 'PO_PAYMENT',
-                      amount: paid,
-                      referenceId: po.id,
-                      notes: 'PO stock purchase: ${po.id} (${sup.name})',
-                      createdAt: DateTime.now(),
-                    ),
-                  );
+                  if (isCash) {
+                    // Paid from Cash Drawer Till:
+                    // Record DRAWER_EXPENSE so Cash Register session tracks payout,
+                    // but DO NOT deduct from _bankAccountBalance!
+                    final bankTxId =
+                        'TX-DRAWER-${DateTime.now().millisecondsSinceEpoch}';
+                    createdBankTxId = bankTxId;
+                    _bankTransactions.insert(
+                      0,
+                      _BankTransaction(
+                        id: bankTxId,
+                        type: 'DRAWER_EXPENSE',
+                        amount: paid,
+                        referenceId: po.id,
+                        notes: 'PO stock purchase from drawer: ${po.id} (${sup.name})',
+                        createdAt: DateTime.now(),
+                      ),
+                    );
+                  } else {
+                    // Paid from Bank Transfer / Card / Cheque:
+                    // Deduct from bank ledger
+                    final bankTxId =
+                        'TX-BANK-${DateTime.now().millisecondsSinceEpoch}';
+                    createdBankTxId = bankTxId;
+                    _bankAccountBalance -= paid;
+                    _bankTransactions.insert(
+                      0,
+                      _BankTransaction(
+                        id: bankTxId,
+                        type: 'PO_PAYMENT',
+                        amount: paid,
+                        referenceId: po.id,
+                        notes: 'PO stock purchase: ${po.id} (${sup.name})',
+                        createdAt: DateTime.now(),
+                      ),
+                    );
+                  }
                 }
 
                 // 4. Persist to SharedPreferences FIRST before any DB or sync operations run
@@ -1781,6 +2088,7 @@ extension _purchase_orders_pageExt on _DashboardScreenState {
                 if (createdBankTxId != null) {
                   await _enqueueSync('INSERT', 'bank_transactions', createdBankTxId);
                 }
+                await _loadCoreDataFromRepositories();
 
                 if (!ctx.mounted) return;
                 Navigator.pop(ctx);
@@ -2559,126 +2867,165 @@ extension _purchase_orders_pageExt on _DashboardScreenState {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             const Text(
-                              'Confirm Receipt & Payments',
+                              'Confirm Receipt & Payment Decision',
                               style: TextStyle(
                                 fontWeight: FontWeight.w800,
                                 fontSize: 15,
                               ),
                             ),
-                            const SizedBox(height: 14),
+                            const SizedBox(height: 12),
 
                             const Text(
-                              'Payment Method',
+                              'Payment Settlement Plan (ගෙවීම් ආකාරය)',
                               style: TextStyle(
-                                fontWeight: FontWeight.w600,
+                                fontWeight: FontWeight.w700,
                                 fontSize: 13,
                               ),
                             ),
                             const SizedBox(height: 8),
-                            Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children:
-                                  [
-                                    'CASH',
-                                    'CARD',
-                                    'CHEQUE',
-                                    'CREDIT',
-                                    'PARTIAL',
-                                    'INSTALLMENT',
-                                  ].map<Widget>((method) {
-                                    final isSelected =
-                                        selectedPaymentMethod == method;
-                                    return ChoiceChip(
-                                      label: Text(method),
-                                      labelStyle: TextStyle(
-                                        color: isSelected
-                                            ? Colors.white
-                                            : Colors.black87,
-                                        fontWeight: isSelected
-                                            ? FontWeight.bold
-                                            : FontWeight.normal,
-                                      ),
-                                      selected: isSelected,
-                                      onSelected: (selected) {
-                                        if (selected) {
-                                          setLocal(() {
-                                            selectedPaymentMethod = method;
-                                          });
-                                        }
-                                      },
-                                      selectedColor: AppTheme.brandIndigo,
-                                    );
-                                  }).toList(),
+
+                            // 3 Settlement Plan cards
+                            LayoutBuilder(
+                              builder: (context, constraints) {
+                                final isNarrow = constraints.maxWidth < 520;
+                                final planOptions = [
+                                  _buildSettlementOption(
+                                    title: 'Full Payment',
+                                    subtitle: 'මුළු මුදලම ගෙවීම',
+                                    badge: _money(po.amount),
+                                    badgeColor: const Color(0xFF059669),
+                                    icon: Icons.check_circle_outline_rounded,
+                                    isSelected: settlementPlan == 'FULL',
+                                    isDark: isDark,
+                                    onTap: () => setLocal(() => settlementPlan = 'FULL'),
+                                  ),
+                                  _buildSettlementOption(
+                                    title: 'Partial / Advance',
+                                    subtitle: 'කොටසක් ගෙවා ඉතිරිය පසුවට',
+                                    badge: 'Custom Pay',
+                                    badgeColor: const Color(0xFFD97706),
+                                    icon: Icons.pie_chart_outline_rounded,
+                                    isSelected: settlementPlan == 'PARTIAL',
+                                    isDark: isDark,
+                                    onTap: () => setLocal(() => settlementPlan = 'PARTIAL'),
+                                  ),
+                                  _buildSettlementOption(
+                                    title: 'Pay Later (Credit)',
+                                    subtitle: '100% ණය පදනම මත',
+                                    badge: 'Rs. 0 Now',
+                                    badgeColor: const Color(0xFFDC2626),
+                                    icon: Icons.hourglass_bottom_rounded,
+                                    isSelected: settlementPlan == 'CREDIT',
+                                    isDark: isDark,
+                                    onTap: () => setLocal(() => settlementPlan = 'CREDIT'),
+                                  ),
+                                ];
+
+                                if (isNarrow) {
+                                  return Column(
+                                    children: planOptions
+                                        .map((w) => Padding(
+                                              padding: const EdgeInsets.only(bottom: 8),
+                                              child: w,
+                                            ))
+                                        .toList(),
+                                  );
+                                }
+                                return Row(
+                                  children: planOptions
+                                      .map((w) => Expanded(
+                                            child: Padding(
+                                              padding: const EdgeInsets.symmetric(horizontal: 4),
+                                              child: w,
+                                            ),
+                                          ))
+                                      .toList(),
+                                );
+                              },
                             ),
                             const SizedBox(height: 14),
 
-                            // Conditional payment inputs
-                            if (selectedPaymentMethod == 'CHEQUE') ...[
-                              TextField(
-                                controller: chequeNumberCtrl,
-                                decoration: const InputDecoration(
-                                  labelText: 'Cheque Number *',
-                                  border: OutlineInputBorder(),
-                                  prefixIcon: Icon(
-                                    Icons.confirmation_number_outlined,
-                                  ),
-                                ),
-                              ),
-                            ] else if (selectedPaymentMethod == 'CREDIT') ...[
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: TextField(
-                                      controller: paymentDueDateCtrl,
-                                      decoration: const InputDecoration(
-                                        labelText: 'Payment Due Date',
-                                        border: OutlineInputBorder(),
-                                        hintText: 'YYYY-MM-DD',
-                                        prefixIcon: Icon(
-                                          Icons.calendar_today_outlined,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  IconButton(
-                                    icon: const Icon(
-                                      Icons.calendar_month_rounded,
-                                    ),
-                                    onPressed: () async {
-                                      final date = await showDatePicker(
-                                        context: ctx,
-                                        initialDate: DateTime.now().add(
-                                          const Duration(days: 30),
-                                        ),
-                                        firstDate: DateTime.now(),
-                                        lastDate: DateTime.now().add(
-                                          const Duration(days: 365),
-                                        ),
-                                      );
-                                      if (date != null) {
-                                        setLocal(() {
-                                          paymentDueDateCtrl.text = date
-                                              .toIso8601String()
-                                              .split('T')
-                                              .first;
-                                        });
-                                      }
-                                    },
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                'Full amount ${_money(po.amount)} will be tracked as Accounts Payable.',
-                                style: const TextStyle(
-                                  color: Color(0xFFD97706),
-                                  fontWeight: FontWeight.w600,
+                            // Conditional payment inputs based on settlementPlan
+                            if (settlementPlan == 'FULL') ...[
+                              const Text(
+                                'Payment Source / Account (ගෙවීම සිදුකරන ගිණුම)',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
                                   fontSize: 12.5,
                                 ),
                               ),
-                            ] else if (selectedPaymentMethod == 'PARTIAL' ||
-                                selectedPaymentMethod == 'INSTALLMENT') ...[
+                              const SizedBox(height: 8),
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: [
+                                  {
+                                    'id': 'CASH',
+                                    'label': 'CASH (Drawer Till / මුදල් ලාච්චුවෙන්)',
+                                    'icon': Icons.point_of_sale_rounded,
+                                  },
+                                  {
+                                    'id': 'BANK_TRANSFER',
+                                    'label': 'Bank Transfer (බැංකු ගිණුමෙන්)',
+                                    'icon': Icons.account_balance_rounded,
+                                  },
+                                  {
+                                    'id': 'CARD',
+                                    'label': 'Card (කාඩ්පත්)',
+                                    'icon': Icons.credit_card_rounded,
+                                  },
+                                  {
+                                    'id': 'CHEQUE',
+                                    'label': 'Cheque (චෙක්පත්)',
+                                    'icon': Icons.fact_check_outlined,
+                                  },
+                                ].map((item) {
+                                  final id = item['id'] as String;
+                                  final label = item['label'] as String;
+                                  final icon = item['icon'] as IconData;
+                                  final isSelected = paymentSource == id;
+                                  return ChoiceChip(
+                                    avatar: Icon(
+                                      icon,
+                                      size: 15,
+                                      color: isSelected ? Colors.white : AppTheme.brandIndigo,
+                                    ),
+                                    label: Text(label),
+                                    selected: isSelected,
+                                    selectedColor: AppTheme.brandIndigo,
+                                    labelStyle: TextStyle(
+                                      color: isSelected ? Colors.white : (isDark ? Colors.white : Colors.black87),
+                                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                    ),
+                                    onSelected: (val) {
+                                      if (val) setLocal(() => paymentSource = id);
+                                    },
+                                  );
+                                }).toList(),
+                              ),
+                              if (paymentSource == 'CHEQUE') ...[
+                                const SizedBox(height: 10),
+                                TextField(
+                                  controller: chequeNumberCtrl,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Cheque Number *',
+                                    border: OutlineInputBorder(),
+                                    prefixIcon: Icon(Icons.confirmation_number_outlined),
+                                  ),
+                                ),
+                              ],
+                              const SizedBox(height: 8),
+                              Text(
+                                paymentSource == 'CASH'
+                                    ? 'Deducting ${_money(po.amount)} directly from active Cash Register Drawer Till.'
+                                    : 'Deducting ${_money(po.amount)} from Bank Account Ledger.',
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  fontWeight: FontWeight.w600,
+                                  color: isDark ? Colors.grey[400] : Colors.grey[700],
+                                ),
+                              ),
+                            ] else if (settlementPlan == 'PARTIAL') ...[
                               Row(
                                 children: [
                                   Expanded(
@@ -2686,20 +3033,13 @@ extension _purchase_orders_pageExt on _DashboardScreenState {
                                       controller: partialCtrl,
                                       keyboardType: TextInputType.number,
                                       decoration: InputDecoration(
-                                        labelText:
-                                            'Paid Amount (Total: ${_money(po.amount)})',
+                                        labelText: 'Paid Amount Now (Total: ${_money(po.amount)})',
                                         border: const OutlineInputBorder(),
-                                        prefixText:
-                                            '${_currency == 'LKR'
-                                                ? 'Rs.'
-                                                : _currency == 'USD'
-                                                ? '\$'
-                                                : _currency} ',
+                                        prefixText: '${_currency == 'LKR' ? 'Rs.' : _currency == 'USD' ? '\$' : _currency} ',
                                       ),
                                       onChanged: (v) {
                                         setLocal(() {
-                                          partialAmount =
-                                              double.tryParse(v) ?? 0;
+                                          partialAmount = double.tryParse(v) ?? 0;
                                         });
                                       },
                                     ),
@@ -2712,33 +3052,24 @@ extension _purchase_orders_pageExt on _DashboardScreenState {
                                           child: TextField(
                                             controller: paymentDueDateCtrl,
                                             decoration: const InputDecoration(
-                                              labelText: 'Due Date',
+                                              labelText: 'Balance Due Date',
                                               border: OutlineInputBorder(),
                                               hintText: 'YYYY-MM-DD',
                                             ),
                                           ),
                                         ),
                                         IconButton(
-                                          icon: const Icon(
-                                            Icons.calendar_month_rounded,
-                                          ),
+                                          icon: const Icon(Icons.calendar_month_rounded),
                                           onPressed: () async {
                                             final date = await showDatePicker(
                                               context: ctx,
-                                              initialDate: DateTime.now().add(
-                                                const Duration(days: 30),
-                                              ),
+                                              initialDate: DateTime.now().add(const Duration(days: 30)),
                                               firstDate: DateTime.now(),
-                                              lastDate: DateTime.now().add(
-                                                const Duration(days: 365),
-                                              ),
+                                              lastDate: DateTime.now().add(const Duration(days: 365)),
                                             );
                                             if (date != null) {
                                               setLocal(() {
-                                                paymentDueDateCtrl.text = date
-                                                    .toIso8601String()
-                                                    .split('T')
-                                                    .first;
+                                                paymentDueDateCtrl.text = date.toIso8601String().split('T').first;
                                               });
                                             }
                                           },
@@ -2748,42 +3079,67 @@ extension _purchase_orders_pageExt on _DashboardScreenState {
                                   ),
                                 ],
                               ),
-                              const SizedBox(height: 10),
+                              const SizedBox(height: 12),
                               const Text(
-                                'Paid Portion Method',
+                                'Payment Source for Paid Portion (ගෙවීම සිදුකරන ගිණුම)',
                                 style: TextStyle(
-                                  fontWeight: FontWeight.w600,
+                                  fontWeight: FontWeight.w700,
                                   fontSize: 12,
                                 ),
                               ),
                               const SizedBox(height: 6),
-                              Row(
-                                children: ['CASH', 'CARD', 'CHEQUE'].map((
-                                  subM,
-                                ) {
-                                  final isSelected =
-                                      partialPaidPortionMethod == subM;
-                                  return Padding(
-                                    padding: const EdgeInsets.only(right: 8),
-                                    child: ChoiceChip(
-                                      label: Text(subM),
-                                      selected: isSelected,
-                                      onSelected: (selected) {
-                                        if (selected) {
-                                          setLocal(
-                                            () =>
-                                                partialPaidPortionMethod = subM,
-                                          );
-                                        }
-                                      },
+                              Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: [
+                                  {
+                                    'id': 'CASH',
+                                    'label': 'CASH (Drawer Till)',
+                                    'icon': Icons.point_of_sale_rounded,
+                                  },
+                                  {
+                                    'id': 'BANK_TRANSFER',
+                                    'label': 'Bank Transfer',
+                                    'icon': Icons.account_balance_rounded,
+                                  },
+                                  {
+                                    'id': 'CARD',
+                                    'label': 'Card',
+                                    'icon': Icons.credit_card_rounded,
+                                  },
+                                  {
+                                    'id': 'CHEQUE',
+                                    'label': 'Cheque',
+                                    'icon': Icons.fact_check_outlined,
+                                  },
+                                ].map((item) {
+                                  final id = item['id'] as String;
+                                  final label = item['label'] as String;
+                                  final icon = item['icon'] as IconData;
+                                  final isSelected = paymentSource == id;
+                                  return ChoiceChip(
+                                    avatar: Icon(
+                                      icon,
+                                      size: 15,
+                                      color: isSelected ? Colors.white : AppTheme.brandIndigo,
                                     ),
+                                    label: Text(label),
+                                    selected: isSelected,
+                                    selectedColor: AppTheme.brandIndigo,
+                                    labelStyle: TextStyle(
+                                      color: isSelected ? Colors.white : (isDark ? Colors.white : Colors.black87),
+                                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                    ),
+                                    onSelected: (val) {
+                                      if (val) setLocal(() => paymentSource = id);
+                                    },
                                   );
                                 }).toList(),
                               ),
-                              if (partialPaidPortionMethod == 'CHEQUE') ...[
+                              if (paymentSource == 'CHEQUE') ...[
                                 const SizedBox(height: 8),
                                 TextField(
-                                  controller: partialChequeNumberCtrl,
+                                  controller: chequeNumberCtrl,
                                   decoration: const InputDecoration(
                                     labelText: 'Paid Portion Cheque Number *',
                                     border: OutlineInputBorder(),
@@ -2792,12 +3148,96 @@ extension _purchase_orders_pageExt on _DashboardScreenState {
                                 ),
                               ],
                               const SizedBox(height: 10),
-                              Text(
-                                'Remaining Balance Due: ${_money((po.amount - partialAmount).clamp(0.0, po.amount))}',
-                                style: const TextStyle(
-                                  color: Color(0xFFDC2626),
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 13,
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFDC2626).withValues(alpha: 0.08),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: const Color(0xFFDC2626).withValues(alpha: 0.2),
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(
+                                      'Paid Now: ${_money(partialAmount.clamp(0.0, po.amount))}',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        color: Color(0xFF059669),
+                                      ),
+                                    ),
+                                    Text(
+                                      'Remaining Due: ${_money((po.amount - partialAmount).clamp(0.0, po.amount))}',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w800,
+                                        color: Color(0xFFDC2626),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ] else if (settlementPlan == 'CREDIT') ...[
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: TextField(
+                                      controller: paymentDueDateCtrl,
+                                      decoration: const InputDecoration(
+                                        labelText: 'Payment Due Date',
+                                        border: OutlineInputBorder(),
+                                        hintText: 'YYYY-MM-DD',
+                                        prefixIcon: Icon(Icons.calendar_today_outlined),
+                                      ),
+                                    ),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.calendar_month_rounded),
+                                    onPressed: () async {
+                                      final date = await showDatePicker(
+                                        context: ctx,
+                                        initialDate: DateTime.now().add(const Duration(days: 30)),
+                                        firstDate: DateTime.now(),
+                                        lastDate: DateTime.now().add(const Duration(days: 365)),
+                                      );
+                                      if (date != null) {
+                                        setLocal(() {
+                                          paymentDueDateCtrl.text = date.toIso8601String().split('T').first;
+                                        });
+                                      }
+                                    },
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 10),
+                              Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFD97706).withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: const Color(0xFFD97706).withValues(alpha: 0.3),
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.info_outline_rounded,
+                                      color: Color(0xFFD97706),
+                                      size: 20,
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Text(
+                                        'Rs. 0 will be deducted from your Cash Drawer or Bank Account today. The full order amount of ${_money(po.amount)} will be tracked as Accounts Payable (ණය) to ${po.supplier}.',
+                                        style: const TextStyle(
+                                          color: Color(0xFFD97706),
+                                          fontWeight: FontWeight.w600,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                             ],
@@ -2813,31 +3253,26 @@ extension _purchase_orders_pageExt on _DashboardScreenState {
                                         height: 16,
                                         child: CircularProgressIndicator(
                                           strokeWidth: 2,
-                                          valueColor:
-                                              AlwaysStoppedAnimation<Color>(
-                                                Colors.white,
-                                              ),
+                                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                                         ),
                                       )
                                     : const Icon(Icons.check_circle_rounded),
                                 label: Text(
                                   isProcessing
                                       ? 'Processing...'
-                                      : 'Confirm Receipt & Update Inventory',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                  ),
+                                      : (settlementPlan == 'FULL'
+                                          ? 'Confirm & Pay ${_money(po.amount)} Now'
+                                          : (settlementPlan == 'PARTIAL'
+                                              ? 'Confirm & Pay ${_money(partialAmount.clamp(0.0, po.amount))} (Due: ${_money((po.amount - partialAmount).clamp(0.0, po.amount))})'
+                                              : 'Confirm Receipt on Credit (${_money(po.amount)} Due Later)')),
+                                  style: const TextStyle(fontWeight: FontWeight.w700),
                                 ),
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: const Color(0xFF059669),
                                   foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 14,
-                                  ),
+                                  padding: const EdgeInsets.symmetric(vertical: 14),
                                   shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(
-                                      UiRadius.md,
-                                    ),
+                                    borderRadius: BorderRadius.circular(UiRadius.md),
                                   ),
                                 ),
                               ),
@@ -3008,24 +3443,58 @@ extension _purchase_orders_pageExt on _DashboardScreenState {
               ),
               const SizedBox(height: 14),
               const Text(
-                'Payment Method',
+                'Payment Source / Account',
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5),
               ),
               const SizedBox(height: 8),
-              Row(
-                children: ['CASH', 'CARD', 'CHEQUE'].map((method) {
-                  final isSelected = selectedMethod == method;
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: ChoiceChip(
-                      label: Text(method),
-                      selected: isSelected,
-                      onSelected: (selected) {
-                        if (selected) {
-                          setS(() => selectedMethod = method);
-                        }
-                      },
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  {
+                    'id': 'CASH',
+                    'label': 'CASH (Drawer Till)',
+                    'icon': Icons.point_of_sale_rounded,
+                  },
+                  {
+                    'id': 'BANK_TRANSFER',
+                    'label': 'Bank Transfer',
+                    'icon': Icons.account_balance_rounded,
+                  },
+                  {
+                    'id': 'CARD',
+                    'label': 'Card',
+                    'icon': Icons.credit_card_rounded,
+                  },
+                  {
+                    'id': 'CHEQUE',
+                    'label': 'Cheque',
+                    'icon': Icons.fact_check_outlined,
+                  },
+                ].map((item) {
+                  final id = item['id'] as String;
+                  final label = item['label'] as String;
+                  final icon = item['icon'] as IconData;
+                  final isSelected = selectedMethod == id;
+                  return ChoiceChip(
+                    avatar: Icon(
+                      icon,
+                      size: 15,
+                      color: isSelected ? Colors.white : AppTheme.brandIndigo,
                     ),
+                    label: Text(label),
+                    selected: isSelected,
+                    selectedColor: AppTheme.brandIndigo,
+                    labelStyle: TextStyle(
+                      color: isSelected ? Colors.white : Colors.black87,
+                      fontWeight:
+                          isSelected ? FontWeight.bold : FontWeight.normal,
+                    ),
+                    onSelected: (selected) {
+                      if (selected) {
+                        setS(() => selectedMethod = id);
+                      }
+                    },
                   );
                 }).toList(),
               ),
@@ -3106,10 +3575,20 @@ extension _purchase_orders_pageExt on _DashboardScreenState {
       noteText += ' via $selectedMethod';
     }
 
+    final isCash = selectedMethod == 'CASH';
+    final notePrefix = isCash
+        ? 'CASH|drawer|'
+        : (selectedMethod == 'CHEQUE'
+            ? 'CHEQUE|Cheque #${chequeNumberCtrl.text.trim()}|'
+            : '$selectedMethod|');
+
     // Create expense entry for this payment under STOCK_PURCHASE
     if (_appDatabase != null) {
       final payExpId = 'EXP-PAY-${DateTime.now().millisecondsSinceEpoch}';
-      final payBankTxId = 'TX-BANK-${DateTime.now().millisecondsSinceEpoch}';
+      final payBankTxId = isCash
+          ? 'TX-DRAWER-${DateTime.now().millisecondsSinceEpoch}'
+          : 'TX-BANK-${DateTime.now().millisecondsSinceEpoch}';
+
       await _appDatabase!.insertExpense(
         db.ExpensesCompanion(
           id: Value(payExpId),
@@ -3118,25 +3597,42 @@ extension _purchase_orders_pageExt on _DashboardScreenState {
           description: Value('Credit Payment — ${po.id} (${po.supplier})'),
           amount: Value(actualPay),
           locationId: Value(_activeLocationForWrites),
-          notes: Value(noteText),
+          notes: Value('$notePrefix$noteText'),
           expenseDate: Value(DateTime.now()),
+          synced: const Value(false),
           createdAt: Value(DateTime.now()),
+          updatedAt: Value(DateTime.now()),
         ),
       );
 
-      // Deduct from bank ledger
-      _bankAccountBalance -= actualPay;
-      _bankTransactions.insert(
-        0,
-        _BankTransaction(
-          id: payBankTxId,
-          type: 'PO_PAYMENT',
-          amount: actualPay,
-          referenceId: po.id,
-          notes: 'PO credit payment: ${po.id} (${po.supplier})',
-          createdAt: DateTime.now(),
-        ),
-      );
+      if (isCash) {
+        // Deduct from Drawer Till, do NOT deduct from _bankAccountBalance
+        _bankTransactions.insert(
+          0,
+          _BankTransaction(
+            id: payBankTxId,
+            type: 'DRAWER_EXPENSE',
+            amount: actualPay,
+            referenceId: po.id,
+            notes: 'PO credit payment from drawer: ${po.id} (${po.supplier})',
+            createdAt: DateTime.now(),
+          ),
+        );
+      } else {
+        // Deduct from bank ledger
+        _bankAccountBalance -= actualPay;
+        _bankTransactions.insert(
+          0,
+          _BankTransaction(
+            id: payBankTxId,
+            type: 'PO_PAYMENT',
+            amount: actualPay,
+            referenceId: po.id,
+            notes: 'PO credit payment: ${po.id} (${po.supplier})',
+            createdAt: DateTime.now(),
+          ),
+        );
+      }
 
       await _enqueueSync('INSERT', 'expenses', payExpId);
       await _enqueueSync('INSERT', 'bank_transactions', payBankTxId);
@@ -3144,6 +3640,7 @@ extension _purchase_orders_pageExt on _DashboardScreenState {
 
     await _persistWorkspaceData();
     await _enqueueSync('UPDATE', 'purchase_orders', po.id);
+    await _loadCoreDataFromRepositories();
 
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(

@@ -86,11 +86,14 @@ extension _store_page_contentExt on _DashboardScreenState {
               createdAt: DateTime.now(),
             );
             setState(() {
-              _bankAccountBalance -= amount;
+              if (type != 'DRAWER_EXPENSE') {
+                _bankAccountBalance -= amount;
+              }
               _bankTransactions.insert(0, tx);
             });
             await _persistWorkspaceData();
             await _enqueueSync('INSERT', 'bank_transactions', tx.id);
+            await _loadCoreDataFromRepositories();
           },
         );
         break;
@@ -143,9 +146,13 @@ extension _store_page_contentExt on _DashboardScreenState {
               : _currency == 'USD'
               ? '\$'
               : _currency,
+          storeName: _companyName,
           cashierSessions: _cashierSessions,
           bankTransactions: _bankTransactions,
           bankAccountBalance: _bankAccountBalance,
+          cashInHand: _cashInHand,
+          isAdminOrOwner: _isOwner || _isAdmin,
+          scopedExpenses: _scopedExpenses,
           onAddManualTransaction: (amount, type, notes) async {
             final tx = _BankTransaction(
               id: 'TX-BANK-${DateTime.now().millisecondsSinceEpoch}',
@@ -166,8 +173,17 @@ extension _store_page_contentExt on _DashboardScreenState {
             await _persistWorkspaceData();
             await _enqueueSync('INSERT', 'bank_transactions', tx.id);
           },
-          onCloseSession: (session, actualCash, {payoutAmount, payoutReason, keptCash = 0.0}) async {
-            await _closeSession(session, actualCash, payoutAmount: payoutAmount, payoutReason: payoutReason, keptCash: keptCash);
+          onCloseSession: (session, actualCash, {payoutAmount, payoutReason, keptCash = 0.0, notes}) async {
+            await _closeSession(session, actualCash, payoutAmount: payoutAmount, payoutReason: payoutReason, keptCash: keptCash, notes: notes);
+          },
+          onApproveCloseSession: (session) async {
+            await _approveCloseSession(session);
+          },
+          onRejectCloseSession: (session, {reason}) async {
+            await _rejectCloseSession(session, reason: reason);
+          },
+          onOpenSession: (userId, userName, openingCash) async {
+            await _openSession(userId, userName, openingCash);
           },
           onCalculateSessionBreakdown: _calculateSessionBreakdown,
           appUsers: _users,

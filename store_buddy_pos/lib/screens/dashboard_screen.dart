@@ -107,6 +107,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _UserPermissionOption('Mobile Reload', {'mobileReload'}),
     _UserPermissionOption('Sync Manager', {'sync'}),
     _UserPermissionOption('WhatsApp Connect', {'whatsapp'}),
+    _UserPermissionOption('Cash & Bank Registers', {'bankRegisters'}),
   ];
 
   static const List<_NavItem> _defaultStoreNavItems = [
@@ -413,7 +414,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
         .where((s) => s.status == 'OPEN')
         .toList();
     if (openSessions.isNotEmpty) {
-      return openSessions.fold<double>(0.0, (sum, s) => sum + s.expectedCash);
+      return openSessions.fold<double>(
+        0.0,
+        (sum, s) => sum + _calculateExpectedCashForSession(s),
+      );
     }
 
     double cash = 0.0;
@@ -4187,7 +4191,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   _CashierSession? _activeSessionFor(String userId) {
     for (final s in _cashierSessions) {
-      if (s.userId == userId && s.status == 'OPEN') {
+      if ((s.userId == userId ||
+              (_currentUserName.isNotEmpty &&
+                  s.userName.trim().toLowerCase() ==
+                      _currentUserName.trim().toLowerCase())) &&
+          s.status == 'OPEN') {
+        return s;
+      }
+    }
+    return null;
+  }
+
+  _CashierSession? _pendingSessionFor(String userId) {
+    for (final s in _cashierSessions) {
+      if ((s.userId == userId ||
+              (_currentUserName.isNotEmpty &&
+                  s.userName.trim().toLowerCase() ==
+                      _currentUserName.trim().toLowerCase())) &&
+          s.status == 'PENDING_APPROVAL') {
         return s;
       }
     }
@@ -4210,7 +4231,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     // 1. Sales processed by this user during the session
     for (final sale in _scopedSales) {
-      if (sale.status == 'COMPLETED' && sale.employeeId == session.userId) {
+      final matchesUser = sale.employeeId == session.userId ||
+          (_currentUserName.isNotEmpty &&
+              sale.employeeId.trim().toLowerCase() ==
+                  session.userName.trim().toLowerCase()) ||
+          session.userId.isEmpty;
+      if (sale.status == 'COMPLETED' && matchesUser) {
         if (sale.createdAt.isAfter(session.openingTime) &&
             (session.closingTime == null ||
                 sale.createdAt.isBefore(session.closingTime!))) {
@@ -4225,6 +4251,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
             installmentSales += sale.total;
           } else if (pm == 'COD') {
             codSales += sale.total;
+          } else {
+            cardSales += sale.total;
           }
         }
       }
@@ -4269,9 +4297,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           (session.closingTime == null ||
               expenseDate.isBefore(session.closingTime!))) {
         final pm = _getExpensePaymentMethod(exp.notes);
-        final notes = exp.notes?.toLowerCase() ?? '';
-        final isDrawer = notes.contains('drawer') || notes.contains('cashier');
-        if (pm == 'CASH' && isDrawer) {
+        if (pm == 'CASH') {
           drawerExpenses += exp.amount;
         }
       }
@@ -4291,6 +4317,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       }
     }
 
+    final totalSales =
+        cashSales + cardSales + codSales + creditSales + installmentSales;
     final expected =
         opening +
         cashSales +
@@ -4308,6 +4336,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       'creditSales': creditSales,
       'installmentSales': installmentSales,
       'codSales': codSales,
+      'totalSales': totalSales,
       'creditCollected': creditCollected,
       'installmentsCollected': installmentsCollected,
       'drawerExpenses': drawerExpenses,
@@ -4362,7 +4391,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             amount: diff,
             referenceId: sessionId,
             notes:
-                'Drawer open cash withdrawal for cashier $userName (net adjustment: opening ${_money(openingCash)} - prev kept ${_money(previousKeptCash)})',
+                'Starting float issued to cashier $userName (Float: ${_money(openingCash)})',
             createdAt: DateTime.now(),
           ),
         );
@@ -4386,8 +4415,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     await _persistWorkspaceData();
     await _enqueueSync('INSERT', 'cashier_sessions', session.id);
-    if (_bankTransactions.isNotEmpty && _bankTransactions.first.referenceId == sessionId) {
-      await _enqueueSync('INSERT', 'bank_transactions', _bankTransactions.first.id);
+    if (_bankTransactions.isNotEmpty &&
+        _bankTransactions.first.referenceId == sessionId) {
+      await _enqueueSync(
+        'INSERT',
+        'bank_transactions',
+        _bankTransactions.first.id,
+      );
     }
   }
 
@@ -4397,6 +4431,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     double? payoutAmount,
     String? payoutReason,
     double keptCash = 0.0,
+    String? notes,
   }) async {
     if (payoutAmount != null && payoutAmount > 0) {
       final expenseId = 'EXP-${DateTime.now().millisecondsSinceEpoch}';
@@ -4419,7 +4454,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
       await _enqueueSync('INSERT', 'expenses', expenseId);
     }
 
-    final expected = _calculateExpectedCashForSession(session);
+    final breakdown = _calculateSessionBreakdown(session);
+    final expected = breakdown['expected'] ?? session.openingCash;
     final difference = actualCash - expected;
 
     setState(() {
@@ -4429,10 +4465,69 @@ class _DashboardScreenState extends State<DashboardScreen> {
       session.actualCash = actualCash;
       session.difference = difference;
       session.keptCash = keptCash;
-      session.status = 'CLOSED';
+      session.closingNotes = notes;
+      session.cashSales = breakdown['cashSales'] ?? 0.0;
+      session.cardSales = breakdown['cardSales'] ?? 0.0;
+      session.codSales = breakdown['codSales'] ?? 0.0;
+      session.creditSales = breakdown['creditSales'] ?? 0.0;
+      session.installmentSales = breakdown['installmentSales'] ?? 0.0;
+      session.totalSales = breakdown['totalSales'] ?? 0.0;
 
-      // Deposit the actual closing cash back into the bank minus kept cash
-      final depositAmount = actualCash - keptCash;
+      // If user is Owner or Admin, directly close!
+      if (_isOwner || _isAdmin) {
+        session.status = 'CLOSED';
+        session.approvedBy = _currentUserName;
+        session.approvedAt = DateTime.now();
+
+        // Deposit the actual closing cash back into the bank minus kept cash
+        final depositAmount = actualCash - keptCash;
+        if (depositAmount > 0) {
+          _bankAccountBalance += depositAmount;
+          _bankTransactions.insert(
+            0,
+            _BankTransaction(
+              id: 'TX-BANK-${DateTime.now().millisecondsSinceEpoch}',
+              type: 'CLOSE_SHIFT_DEPOSIT',
+              amount: depositAmount,
+              referenceId: session.id,
+              notes:
+                  'Drawer close deposit for cashier ${session.userName} (Counted: ${_money(actualCash)}, Kept: ${_money(keptCash)})',
+              createdAt: DateTime.now(),
+            ),
+          );
+        }
+      } else {
+        // Cashier submitted close request for Admin verification!
+        session.status = 'PENDING_APPROVAL';
+        session.closeRequestedBy = _currentUserName;
+        session.closeRequestedAt = DateTime.now();
+      }
+    });
+
+    await _persistWorkspaceData();
+    await _enqueueSync('UPDATE', 'cashier_sessions', session.id);
+    if (session.status == 'CLOSED' &&
+        actualCash - keptCash > 0 &&
+        _bankTransactions.isNotEmpty &&
+        _bankTransactions.first.referenceId == session.id) {
+      await _enqueueSync(
+        'INSERT',
+        'bank_transactions',
+        _bankTransactions.first.id,
+      );
+    }
+  }
+
+  Future<void> _approveCloseSession(_CashierSession session) async {
+    final actualCash = session.actualCash ?? session.closingCash ?? 0.0;
+    final keptCash = session.keptCash;
+    final depositAmount = actualCash - keptCash;
+
+    setState(() {
+      session.status = 'CLOSED';
+      session.approvedBy = _currentUserName;
+      session.approvedAt = DateTime.now();
+
       if (depositAmount > 0) {
         _bankAccountBalance += depositAmount;
         _bankTransactions.insert(
@@ -4443,7 +4538,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             amount: depositAmount,
             referenceId: session.id,
             notes:
-                'Drawer close deposit for cashier ${session.userName} (kept ${_money(keptCash)} in drawer)',
+                'Admin verified drawer deposit for cashier ${session.userName} by $_currentUserName (Counted: ${_money(actualCash)}, Kept: ${_money(keptCash)})',
             createdAt: DateTime.now(),
           ),
         );
@@ -4452,11 +4547,33 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     await _persistWorkspaceData();
     await _enqueueSync('UPDATE', 'cashier_sessions', session.id);
-    if (actualCash - keptCash > 0 &&
+    if (depositAmount > 0 &&
         _bankTransactions.isNotEmpty &&
         _bankTransactions.first.referenceId == session.id) {
-      await _enqueueSync('INSERT', 'bank_transactions', _bankTransactions.first.id);
+      await _enqueueSync(
+        'INSERT',
+        'bank_transactions',
+        _bankTransactions.first.id,
+      );
     }
+  }
+
+  Future<void> _rejectCloseSession(
+    _CashierSession session, {
+    String? reason,
+  }) async {
+    setState(() {
+      session.status = 'OPEN';
+      session.closingTime = null;
+      session.closingCash = null;
+      session.actualCash = null;
+      session.difference = null;
+      session.closeRequestedAt = null;
+      session.closeRequestedBy = null;
+    });
+
+    await _persistWorkspaceData();
+    await _enqueueSync('UPDATE', 'cashier_sessions', session.id);
   }
 
   void _applyBarcodePreset(String presetKey) {
@@ -16745,13 +16862,23 @@ class _CashierSession {
   double? closingCash;
   double expectedCash;
   double cashSales;
+  double cardSales;
+  double codSales;
+  double creditSales;
+  double installmentSales;
+  double totalSales;
   double cashExpenses;
   double cashTransfers;
   double? actualCash;
   double? difference;
   double keptCash;
-  String status; // 'OPEN' or 'CLOSED'
+  String status; // 'OPEN', 'PENDING_APPROVAL', 'CLOSED'
   final String locationId;
+  String? closingNotes;
+  String? closeRequestedBy;
+  DateTime? closeRequestedAt;
+  String? approvedBy;
+  DateTime? approvedAt;
 
   _CashierSession({
     required this.id,
@@ -16763,6 +16890,11 @@ class _CashierSession {
     this.closingCash,
     this.expectedCash = 0.0,
     this.cashSales = 0.0,
+    this.cardSales = 0.0,
+    this.codSales = 0.0,
+    this.creditSales = 0.0,
+    this.installmentSales = 0.0,
+    this.totalSales = 0.0,
     this.cashExpenses = 0.0,
     this.cashTransfers = 0.0,
     this.actualCash,
@@ -16770,6 +16902,11 @@ class _CashierSession {
     this.keptCash = 0.0,
     required this.status,
     required this.locationId,
+    this.closingNotes,
+    this.closeRequestedBy,
+    this.closeRequestedAt,
+    this.approvedBy,
+    this.approvedAt,
   });
 
   Map<String, dynamic> toJson() => {
@@ -16782,6 +16919,11 @@ class _CashierSession {
     'closingCash': closingCash,
     'expectedCash': expectedCash,
     'cashSales': cashSales,
+    'cardSales': cardSales,
+    'codSales': codSales,
+    'creditSales': creditSales,
+    'installmentSales': installmentSales,
+    'totalSales': totalSales,
     'cashExpenses': cashExpenses,
     'cashTransfers': cashTransfers,
     'actualCash': actualCash,
@@ -16789,6 +16931,11 @@ class _CashierSession {
     'keptCash': keptCash,
     'status': status,
     'locationId': locationId,
+    'closingNotes': closingNotes,
+    'closeRequestedBy': closeRequestedBy,
+    'closeRequestedAt': closeRequestedAt?.toIso8601String(),
+    'approvedBy': approvedBy,
+    'approvedAt': approvedAt?.toIso8601String(),
   };
 
   factory _CashierSession.fromJson(Map<String, dynamic> json) =>
@@ -16805,6 +16952,11 @@ class _CashierSession {
         closingCash: (json['closingCash'] as num?)?.toDouble(),
         expectedCash: (json['expectedCash'] as num?)?.toDouble() ?? 0.0,
         cashSales: (json['cashSales'] as num?)?.toDouble() ?? 0.0,
+        cardSales: (json['cardSales'] as num?)?.toDouble() ?? 0.0,
+        codSales: (json['codSales'] as num?)?.toDouble() ?? 0.0,
+        creditSales: (json['creditSales'] as num?)?.toDouble() ?? 0.0,
+        installmentSales: (json['installmentSales'] as num?)?.toDouble() ?? 0.0,
+        totalSales: (json['totalSales'] as num?)?.toDouble() ?? 0.0,
         cashExpenses: (json['cashExpenses'] as num?)?.toDouble() ?? 0.0,
         cashTransfers: (json['cashTransfers'] as num?)?.toDouble() ?? 0.0,
         actualCash: (json['actualCash'] as num?)?.toDouble(),
@@ -16812,6 +16964,15 @@ class _CashierSession {
         keptCash: (json['keptCash'] as num?)?.toDouble() ?? 0.0,
         status: (json['status'] ?? 'OPEN').toString(),
         locationId: (json['locationId'] ?? '').toString(),
+        closingNotes: json['closingNotes']?.toString(),
+        closeRequestedBy: json['closeRequestedBy']?.toString(),
+        closeRequestedAt: json['closeRequestedAt'] != null
+            ? DateTime.tryParse(json['closeRequestedAt'])
+            : null,
+        approvedBy: json['approvedBy']?.toString(),
+        approvedAt: json['approvedAt'] != null
+            ? DateTime.tryParse(json['approvedAt'])
+            : null,
       );
 }
 

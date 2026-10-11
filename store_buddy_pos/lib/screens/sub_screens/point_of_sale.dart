@@ -16,90 +16,214 @@ extension _point_of_saleExt on _DashboardScreenState {
       barrierDismissible: false,
       builder: (ctx) {
         final ctrl = TextEditingController(
-          text: previousKeptCash.toStringAsFixed(2),
+          text: previousKeptCash > 0 ? previousKeptCash.toStringAsFixed(2) : '5000.00',
         );
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          title: const Text(
-            'Open Register Session',
-            style: TextStyle(fontWeight: FontWeight.bold),
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (previousKeptCash > 0) ...[
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.withOpacity(0.08),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.blue.withOpacity(0.2)),
+        return StatefulBuilder(
+          builder: (context, setDlgState) {
+            void addAmount(double add) {
+              final cur = double.tryParse(ctrl.text.trim()) ?? 0.0;
+              setDlgState(() {
+                ctrl.text = (cur + add).toStringAsFixed(2);
+              });
+            }
+
+            void setAmount(double amt) {
+              setDlgState(() {
+                ctrl.text = amt.toStringAsFixed(2);
+              });
+            }
+
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+              title: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF6366F1).withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(
+                      Icons.point_of_sale_rounded,
+                      color: Color(0xFF6366F1),
+                      size: 22,
+                    ),
                   ),
-                  child: Row(
+                  const SizedBox(width: 10),
+                  const Text(
+                    'Open Cashier Shift',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+              content: SizedBox(
+                width: ResponsiveLayout.adaptiveDialogWidth(context, 460),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Icon(
-                        Icons.info_outline,
-                        color: Colors.blue,
-                        size: 20,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Last closed shift left ${_money(previousKeptCash)} kept in drawer change. Pre-populated starting cash.',
-                          style: const TextStyle(
-                            fontSize: 12.5,
-                            color: Colors.blue,
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF6366F1).withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: const Color(0xFF6366F1).withValues(alpha: 0.2),
                           ),
                         ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.person_outline_rounded,
+                              color: Color(0xFF6366F1),
+                              size: 20,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                'Cashier: $_currentUserName  •  Location: ${_activeLocationForWrites.isEmpty ? "Main Store" : _activeLocationForWrites}',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 12.5,
+                                  color: Color(0xFF4F46E5),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      if (previousKeptCash > 0) ...[
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF10B981).withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: const Color(0xFF10B981).withValues(alpha: 0.3),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.savings_outlined,
+                                color: Color(0xFF10B981),
+                                size: 18,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'Previous closed shift left ${_money(previousKeptCash)} kept in drawer change.',
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: Color(0xFF065F46),
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+                      const Text(
+                        'Enter starting cash float (Plot) in drawer to open register:',
+                        style: TextStyle(fontSize: 13),
+                      ),
+                      const SizedBox(height: 10),
+                      TextFormField(
+                        controller: ctrl,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        decoration: InputDecoration(
+                          labelText:
+                              'Starting Cash Float (${_currency == 'LKR' ? 'Rs.' : _currency})*',
+                          prefixIcon: const Icon(Icons.payments_outlined),
+                          border: const OutlineInputBorder(),
+                        ),
+                        onChanged: (_) => setDlgState(() {}),
+                      ),
+                      const SizedBox(height: 12),
+                      const Text(
+                        'Quick Float Presets:',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.grey,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 6,
+                        children: [
+                          ActionChip(
+                            label: const Text('+1,000'),
+                            onPressed: () => addAmount(1000),
+                          ),
+                          ActionChip(
+                            label: const Text('+2,000'),
+                            onPressed: () => addAmount(2000),
+                          ),
+                          ActionChip(
+                            label: const Text('+5,000'),
+                            onPressed: () => addAmount(5000),
+                          ),
+                          ActionChip(
+                            label: const Text('+10,000'),
+                            onPressed: () => addAmount(10000),
+                          ),
+                          ActionChip(
+                            label: const Text('Exact 5,000'),
+                            onPressed: () => setAmount(5000),
+                          ),
+                          ActionChip(
+                            label: const Text('Exact 10,000'),
+                            onPressed: () => setAmount(10000),
+                          ),
+                        ],
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 14),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, null),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF6366F1),
+                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                  ),
+                  icon: const Icon(Icons.lock_open_rounded, size: 16),
+                  onPressed: () {
+                    final amt = double.tryParse(ctrl.text.trim());
+                    if (amt == null || amt < 0) {
+                      ScaffoldMessenger.of(ctx).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'Please enter a valid starting cash amount',
+                          ),
+                        ),
+                      );
+                      return;
+                    }
+                    Navigator.pop(ctx, ctrl.text.trim());
+                  },
+                  label: const Text(
+                    'Start Shift / Open Drawer',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ),
               ],
-              const Text(
-                'You must open a register session before checking out. Enter the starting cashier drawer cash amount.',
-              ),
-              const SizedBox(height: 14),
-              TextFormField(
-                controller: ctrl,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                decoration: InputDecoration(
-                  labelText:
-                      'Opening Cash (${_currency == 'LKR' ? 'Rs.' : _currency})',
-                  border: const OutlineInputBorder(),
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, null),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () {
-                final amt = double.tryParse(ctrl.text.trim());
-                if (amt == null || amt < 0) {
-                  ScaffoldMessenger.of(ctx).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        'Please enter a valid starting cash amount',
-                      ),
-                    ),
-                  );
-                  return;
-                }
-                Navigator.pop(ctx, ctrl.text.trim());
-              },
-              child: const Text('Open Register'),
-            ),
-          ],
+            );
+          },
         );
       },
     );
@@ -118,6 +242,429 @@ extension _point_of_saleExt on _DashboardScreenState {
           'Register session opened for $_currentUserName with ${_currency == 'LKR' ? 'Rs.' : _currency} ${openingCash.toStringAsFixed(2)}',
         ),
         backgroundColor: const Color(0xFF10B981),
+      ),
+    );
+  }
+
+  Widget _buildPosActiveShiftBanner(_CashierSession session) {
+    final breakdown = _calculateSessionBreakdown(session);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final expCash = breakdown['expected'] ?? session.openingCash;
+    final cashSales = breakdown['cashSales'] ?? 0.0;
+    final cardSales = breakdown['cardSales'] ?? 0.0;
+    final totalTurnover = breakdown['totalSales'] ?? (cashSales + cardSales);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: const Color(0xFF10B981).withValues(alpha: 0.35),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: const BoxDecoration(
+              color: Color(0xFF10B981),
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Wrap(
+              spacing: 12,
+              runSpacing: 2,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                Text(
+                  'Shift: ${session.userName}',
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                ),
+                Text(
+                  'Float: ${_money(session.openingCash)}',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    color: isDark ? Colors.white70 : Colors.black87,
+                  ),
+                ),
+                Text(
+                  'Cash in Drawer: ${_money(expCash)}',
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF10B981),
+                  ),
+                ),
+                Text(
+                  'Total Sales: ${_money(totalTurnover)}',
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    color: isDark ? Colors.white70 : Colors.black87,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          FilledButton.icon(
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFEF4444),
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            icon: const Icon(Icons.lock_clock_rounded, size: 13),
+            label: const Text(
+              'Close Shift',
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+            ),
+            onPressed: () => _triggerCloseShiftFromPos(session),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _triggerCloseShiftFromPos(_CashierSession session) async {
+    final breakdown = _calculateSessionBreakdown(session);
+    final expected = breakdown['expected'] ?? session.openingCash;
+    final actualCtrl = TextEditingController(text: expected.toStringAsFixed(2));
+    final keptCtrl = TextEditingController(text: '0.0');
+    final notesCtrl = TextEditingController();
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDlgState) {
+          final isDark = Theme.of(context).brightness == Brightness.dark;
+          final double act = double.tryParse(actualCtrl.text.trim()) ?? 0.0;
+          final double diff = act - expected;
+          final double kept = double.tryParse(keptCtrl.text.trim()) ?? 0.0;
+
+          return AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+            title: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEF4444).withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.lock_clock_rounded,
+                    color: Color(0xFFEF4444),
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Close Cashier Shift — ${session.userName}',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 17,
+                        ),
+                      ),
+                      Text(
+                        'Opened: ${_formatDateTime(session.openingTime)}',
+                        style: const TextStyle(fontSize: 11.5, color: Colors.grey),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            content: SizedBox(
+              width: ResponsiveLayout.adaptiveDialogWidth(context, 500),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // Expected Drawer Cash Hero Card
+                    Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        gradient: UiGradients.brand,
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'EXPECTED CASH IN DRAWER',
+                                style: TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                              SizedBox(height: 2),
+                              Text(
+                                'මුදල් ලාච්චුවේ තිබිය යුතු මුදල',
+                                style: TextStyle(
+                                  color: Colors.white60,
+                                  fontSize: 10,
+                                ),
+                              ),
+                            ],
+                          ),
+                          Text(
+                            _money(expected),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+
+                    // Drawer Flow Details
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: isDark
+                            ? const Color(0xFF1E293B).withValues(alpha: 0.5)
+                            : const Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: isDark
+                              ? const Color(0xFF334155)
+                              : const Color(0xFFE2E8F0),
+                        ),
+                      ),
+                      child: Column(
+                        children: [
+                          _posBreakdownRow('Opening Float (Plot)', _money(breakdown['opening']!)),
+                          _posBreakdownRow('Cash Sales (+)', '+ ${_money(breakdown['cashSales']!)}'),
+                          if (breakdown['codSales']! > 0)
+                            _posBreakdownRow('COD Completed (+)', '+ ${_money(breakdown['codSales']!)}'),
+                          if (breakdown['creditCollected']! > 0)
+                            _posBreakdownRow('Credit Payments (+)', '+ ${_money(breakdown['creditCollected']!)}'),
+                          if (breakdown['installmentsCollected']! > 0)
+                            _posBreakdownRow('Installments Collected (+)', '+ ${_money(breakdown['installmentsCollected']!)}'),
+                          if (breakdown['drawerExpenses']! > 0)
+                            _posBreakdownRow('Drawer Expenses (-)', '- ${_money(breakdown['drawerExpenses']!)}', isNegative: true),
+                          if (breakdown['cashRefunds']! > 0)
+                            _posBreakdownRow('Refunds / Cash OUT (-)', '- ${_money(breakdown['cashRefunds']!)}', isNegative: true),
+                          const Divider(),
+                          _posBreakdownRow('Card Sales (Bank Settlement)', _money(breakdown['cardSales']!)),
+                          _posBreakdownRow('Total Shift Sales', _money(breakdown['totalSales'] ?? (breakdown['cashSales']! + breakdown['cardSales']!)), isBold: true),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Actual Cash Input
+                    TextFormField(
+                      controller: actualCtrl,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: InputDecoration(
+                        labelText: 'Actual Physical Cash Count (ගණන් කළ මුදල)*',
+                        hintText: 'Enter drawer cash counted',
+                        prefixIcon: const Icon(Icons.attach_money_rounded),
+                        border: const OutlineInputBorder(),
+                        suffixIcon: IconButton(
+                          icon: const Icon(Icons.refresh_rounded),
+                          tooltip: 'Reset to Expected',
+                          onPressed: () {
+                            setDlgState(() {
+                              actualCtrl.text = expected.toStringAsFixed(2);
+                            });
+                          },
+                        ),
+                      ),
+                      onChanged: (_) => setDlgState(() {}),
+                    ),
+                    const SizedBox(height: 10),
+
+                    // Difference Badge
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: diff == 0
+                            ? const Color(0xFF10B981).withValues(alpha: 0.12)
+                            : diff < 0
+                                ? const Color(0xFFEF4444).withValues(alpha: 0.12)
+                                : Colors.blue.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: diff == 0
+                              ? const Color(0xFF10B981)
+                              : diff < 0
+                                  ? const Color(0xFFEF4444)
+                                  : Colors.blue,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            diff == 0
+                                ? Icons.check_circle_outline_rounded
+                                : diff < 0
+                                    ? Icons.warning_amber_rounded
+                                    : Icons.info_outline_rounded,
+                            size: 18,
+                            color: diff == 0
+                                ? const Color(0xFF10B981)
+                                : diff < 0
+                                    ? const Color(0xFFEF4444)
+                                    : Colors.blue,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              diff == 0
+                                  ? 'Balanced — Drawer matches expected cash exactly.'
+                                  : diff < 0
+                                      ? 'SHORTAGE of ${_money(diff.abs())} — Counted is less than expected.'
+                                      : 'EXCESS / OVERAGE of ${_money(diff)} — Counted is more than expected.',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                                color: diff == 0
+                                    ? const Color(0xFF10B981)
+                                    : diff < 0
+                                        ? const Color(0xFFEF4444)
+                                        : Colors.blue,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+
+                    // Kept Cash in Drawer Input
+                    TextFormField(
+                      controller: keptCtrl,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: const InputDecoration(
+                        labelText: 'Kept Cash in Drawer for Next Shift (ඊළඟ මුරයට තබන මුදල)',
+                        border: OutlineInputBorder(),
+                        helperText: 'Amount remaining in drawer for next shift float (default: 0.00)',
+                      ),
+                      onChanged: (_) => setDlgState(() {}),
+                    ),
+                    const SizedBox(height: 12),
+
+                    // Closing Notes Input
+                    TextFormField(
+                      controller: notesCtrl,
+                      decoration: const InputDecoration(
+                        labelText: 'Shift Closing Notes (අමතර සටහන්)',
+                        hintText: 'Any notes regarding count, discrepancy, or handover',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: (_isOwner || _isAdmin)
+                      ? const Color(0xFF10B981)
+                      : const Color(0xFF6366F1),
+                ),
+                onPressed: () async {
+                  final actVal = double.tryParse(actualCtrl.text.trim());
+                  if (actVal == null || actVal < 0) {
+                    ScaffoldMessenger.of(ctx).showSnackBar(
+                      const SnackBar(content: Text('Please enter a valid cash amount')),
+                    );
+                    return;
+                  }
+                  final keptVal = double.tryParse(keptCtrl.text.trim()) ?? 0.0;
+                  final notes = notesCtrl.text.trim();
+
+                  Navigator.pop(ctx);
+                  await _closeSession(
+                    session,
+                    actVal,
+                    keptCash: keptVal,
+                    notes: notes.isNotEmpty ? notes : null,
+                  );
+
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        (_isOwner || _isAdmin)
+                            ? 'Shift closed & verified by Admin.'
+                            : 'Shift close request submitted. Waiting for Admin verification.',
+                      ),
+                      backgroundColor: (_isOwner || _isAdmin)
+                          ? const Color(0xFF10B981)
+                          : Colors.amber.shade800,
+                    ),
+                  );
+                },
+                child: Text(
+                  (_isOwner || _isAdmin)
+                      ? 'Verify & Close Shift'
+                      : 'Submit Shift Close Request',
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _posBreakdownRow(
+    String label,
+    String value, {
+    bool isNegative = false,
+    bool isBold = false,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12.5,
+              fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
+              color: isNegative ? const Color(0xFFEF4444) : null,
+            ),
+          ),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 12.5,
+              fontWeight: isBold ? FontWeight.bold : FontWeight.w600,
+              color: isNegative ? const Color(0xFFEF4444) : null,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -612,8 +1159,9 @@ extension _point_of_saleExt on _DashboardScreenState {
         _selectedLocationScope == _DashboardScreenState._allLocationsLabel;
 
     final activeSession = _activeSessionFor(_currentUserId);
-    if (_isCashier &&
-        activeSession == null &&
+    final pendingSession = _pendingSessionFor(_currentUserId);
+    if (activeSession == null &&
+        pendingSession == null &&
         !_hasPromptedOpenRegisterThisVisit) {
       _hasPromptedOpenRegisterThisVisit = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1785,6 +2333,10 @@ extension _point_of_saleExt on _DashboardScreenState {
                           ],
                         ),
                       ),
+                    ],
+                    if (activeSession != null) ...[
+                      const SizedBox(height: 8),
+                      _buildPosActiveShiftBanner(activeSession),
                     ],
                     const SizedBox(height: 8),
                     // ── QUICK ACTIONS TOOLBAR ──
@@ -4240,17 +4792,15 @@ extension _point_of_saleExt on _DashboardScreenState {
                         onPressed: (cartItems.isEmpty || isAllLocations)
                             ? null
                             : () async {
-                                // Enforce an active cashier session exists only for Cashiers
-                                if (_isCashier) {
-                                  final activeSession = _activeSessionFor(
-                                    _currentUserId,
-                                  );
-                                  if (activeSession == null) {
-                                    await _triggerOpenRegisterDialog();
-                                    if (_activeSessionFor(_currentUserId) ==
-                                        null) {
-                                      return;
-                                    }
+                                // Enforce an active cashier session exists before checking out
+                                final activeSession = _activeSessionFor(
+                                  _currentUserId,
+                                );
+                                if (activeSession == null) {
+                                  await _triggerOpenRegisterDialog();
+                                  if (_activeSessionFor(_currentUserId) ==
+                                      null) {
+                                    return;
                                   }
                                 }
 
@@ -5494,7 +6044,7 @@ extension _point_of_saleExt on _DashboardScreenState {
       ),
     );
 
-    if (_isCashier && activeSession == null) {
+    if (activeSession == null) {
       return Stack(
         children: [
           AbsorbPointer(
@@ -5508,16 +6058,18 @@ extension _point_of_saleExt on _DashboardScreenState {
                 filter: ImageFilter.blur(sigmaX: 8.0, sigmaY: 8.0),
                 child: Center(
                   child: Container(
-                    width: ResponsiveLayout.adaptiveDialogWidth(context, 450),
+                    width: ResponsiveLayout.adaptiveDialogWidth(context, 480),
                     margin: const EdgeInsets.all(20),
                     padding: const EdgeInsets.all(32),
                     decoration: BoxDecoration(
                       color: isDark
-                          ? const Color(0xFF1E1B29).withOpacity(0.85)
-                          : Colors.white.withOpacity(0.9),
+                          ? const Color(0xFF1E1B29).withOpacity(0.92)
+                          : Colors.white.withOpacity(0.95),
                       borderRadius: BorderRadius.circular(24),
                       border: Border.all(
-                        color: Colors.purple.withOpacity(0.2),
+                        color: pendingSession != null
+                            ? Colors.amber.withOpacity(0.4)
+                            : Colors.purple.withOpacity(0.3),
                         width: 1.5,
                       ),
                       boxShadow: [
@@ -5528,76 +6080,149 @@ extension _point_of_saleExt on _DashboardScreenState {
                         ),
                       ],
                     ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: Colors.purple.withOpacity(0.12),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(
-                            Icons.lock_outline_rounded,
-                            color: Colors.purple,
-                            size: 48,
-                          ),
-                        ),
-                        const SizedBox(height: 24),
-                        const Text(
-                          'Register Session Closed',
-                          style: TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: -0.5,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Text(
-                          'You must open a cashier register session with a starting cash-in-hand balance to perform sales transactions.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: isDark ? Colors.white70 : Colors.black87,
-                            height: 1.4,
-                          ),
-                        ),
-                        const SizedBox(height: 32),
-                        Container(
-                          width: double.infinity,
-                          height: 50,
-                          decoration: BoxDecoration(
-                            gradient: UiGradients.brand,
-                            borderRadius: BorderRadius.circular(14),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.purple.withOpacity(0.3),
-                                blurRadius: 12,
-                                offset: const Offset(0, 4),
+                    child: pendingSession != null
+                        ? Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: Colors.amber.withOpacity(0.15),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.hourglass_top_rounded,
+                                  color: Colors.amber,
+                                  size: 48,
+                                ),
+                              ),
+                              const SizedBox(height: 20),
+                              const Text(
+                                'Shift Close Pending Approval',
+                                style: TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: -0.5,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              Text(
+                                'Your shift close request has been submitted to Admin.\n\nCounted Cash: ${_money(pendingSession.actualCash ?? 0.0)}\nExpected Cash: ${_money(pendingSession.expectedCash)}\n\nPlease wait until Admin approves or verifies the shift before starting a new one.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 13.5,
+                                  color: isDark ? Colors.white70 : Colors.black87,
+                                  height: 1.45,
+                                ),
+                              ),
+                              const SizedBox(height: 24),
+                              if (_isOwner || _isAdmin) ...[
+                                FilledButton.icon(
+                                  style: FilledButton.styleFrom(
+                                    backgroundColor: const Color(0xFF10B981),
+                                    minimumSize: const Size(double.infinity, 46),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                  ),
+                                  icon: const Icon(Icons.check_circle_outline, size: 18),
+                                  label: const Text(
+                                    'Admin: Verify & Approve Now',
+                                    style: TextStyle(fontWeight: FontWeight.bold),
+                                  ),
+                                  onPressed: () async {
+                                    await _approveCloseSession(pendingSession);
+                                    if (mounted) setState(() {});
+                                  },
+                                ),
+                                const SizedBox(height: 10),
+                              ],
+                              OutlinedButton.icon(
+                                style: OutlinedButton.styleFrom(
+                                  minimumSize: const Size(double.infinity, 44),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                                icon: const Icon(Icons.refresh_rounded, size: 16),
+                                label: const Text('Refresh Status'),
+                                onPressed: () {
+                                  setState(() {});
+                                },
+                              ),
+                            ],
+                          )
+                        : Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: Colors.purple.withOpacity(0.12),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.point_of_sale_rounded,
+                                  color: Colors.purple,
+                                  size: 48,
+                                ),
+                              ),
+                              const SizedBox(height: 20),
+                              const Text(
+                                'Open Cashier Shift Required',
+                                style: TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: -0.5,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              Text(
+                                'You must open a cashier shift with a starting cash float (Plot) to perform POS sales transactions.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: isDark ? Colors.white70 : Colors.black87,
+                                  height: 1.4,
+                                ),
+                              ),
+                              const SizedBox(height: 28),
+                              Container(
+                                width: double.infinity,
+                                height: 50,
+                                decoration: BoxDecoration(
+                                  gradient: UiGradients.brand,
+                                  borderRadius: BorderRadius.circular(14),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.purple.withOpacity(0.3),
+                                      blurRadius: 12,
+                                      offset: const Offset(0, 4),
+                                    ),
+                                  ],
+                                ),
+                                child: ElevatedButton.icon(
+                                  onPressed: _triggerOpenRegisterDialog,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.transparent,
+                                    shadowColor: Colors.transparent,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(14),
+                                    ),
+                                  ),
+                                  icon: const Icon(Icons.lock_open_rounded, color: Colors.white),
+                                  label: const Text(
+                                    'Open Cashier Shift',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
                               ),
                             ],
                           ),
-                          child: ElevatedButton(
-                            onPressed: _triggerOpenRegisterDialog,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.transparent,
-                              shadowColor: Colors.transparent,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                            ),
-                            child: const Text(
-                              'Open Cash Register',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
                   ),
                 ),
               ),
