@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 
@@ -46,23 +47,52 @@ class AppImage extends StatelessWidget {
 
     final raw = imageUrl!.trim();
 
-    // Check if it's a local file path that exists on this machine
-    if (!raw.startsWith('http://') &&
-        !raw.startsWith('https://') &&
-        !raw.startsWith('/uploads') &&
-        !raw.startsWith('uploads')) {
-      final file = File(raw);
-      if (file.existsSync()) {
+    // Check data URI (base64)
+    if (raw.startsWith('data:image')) {
+      try {
+        final commaIdx = raw.indexOf(',');
+        final base64Str = commaIdx != -1 ? raw.substring(commaIdx + 1) : raw;
+        final bytes = base64Decode(base64Str);
         return _wrap(
-          Image.file(
-            file,
+          Image.memory(
+            bytes,
             width: width,
             height: height,
             fit: fit,
             errorBuilder: (context, error, stackTrace) => err,
           ),
         );
+      } catch (_) {
+        return _wrap(err);
       }
+    }
+
+    // Check if it's a file:// URL or local filesystem path
+    var localPath = raw;
+    if (localPath.startsWith('file:///')) {
+      localPath = Uri.decodeComponent(localPath.replaceFirst('file:///', ''));
+    } else if (localPath.startsWith('file://')) {
+      localPath = Uri.decodeComponent(localPath.replaceFirst('file://', ''));
+    }
+
+    if (!localPath.startsWith('http://') &&
+        !localPath.startsWith('https://') &&
+        !localPath.startsWith('/uploads') &&
+        !localPath.startsWith('uploads')) {
+      try {
+        final file = File(localPath);
+        if (file.existsSync()) {
+          return _wrap(
+            Image.file(
+              file,
+              width: width,
+              height: height,
+              fit: fit,
+              errorBuilder: (context, error, stackTrace) => err,
+            ),
+          );
+        }
+      } catch (_) {}
     }
 
     // Resolve URL via ApiClient

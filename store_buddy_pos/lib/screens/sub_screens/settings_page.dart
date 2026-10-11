@@ -1,4 +1,4 @@
-﻿part of '../dashboard_screen.dart';
+part of '../dashboard_screen.dart';
 
 extension _settings_pageExt on _DashboardScreenState {
   Widget _buildSettingsPage() {
@@ -7,6 +7,21 @@ extension _settings_pageExt on _DashboardScreenState {
       action: ElevatedButton.icon(
         onPressed: _canManageSettings
             ? () async {
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.setBool('bill_show_logo', _receiptShowLogo);
+                if (_companyLogoPath.isNotEmpty) {
+                  await prefs.setString('company_logo_path', _companyLogoPath);
+                }
+                if (_appDatabase != null) {
+                  try {
+                    final existing = await _appDatabase!.getPrintSettings(_activeTenantId ?? 'local');
+                    if (existing != null) {
+                      await _appDatabase!.upsertPrintSettings(
+                        existing.toCompanion(true).copyWith(showLogo: Value(_receiptShowLogo)),
+                      );
+                    }
+                  } catch (_) {}
+                }
                 await _persistWorkspaceData();
                 await _enqueueSync('UPDATE', 'settings', 'company_settings');
                 if (!mounted) return;

@@ -421,6 +421,7 @@ extension _barcode_printing_pageExt on _DashboardScreenState {
                                       'brother_ql_29mm',
                                       'brother_ql_62mm',
                                       'generic_thermal_1col',
+                                      'gprinter_2120_1col',
                                       'generic_58mm_1col',
                                       'a4_3col',
                                       'a4_2col',
@@ -481,6 +482,10 @@ extension _barcode_printing_pageExt on _DashboardScreenState {
                                       DropdownMenuItem(
                                         value: 'generic_thermal_1col',
                                         child: Text('Thermal POS 80mm Roll (76x40mm)'),
+                                      ),
+                                      DropdownMenuItem(
+                                        value: 'gprinter_2120_1col',
+                                        child: Text('Gprinter GP-2120TF (50x30mm 1-Col)'),
                                       ),
                                       DropdownMenuItem(
                                         value: 'generic_58mm_1col',

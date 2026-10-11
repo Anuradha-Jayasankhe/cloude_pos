@@ -1988,18 +1988,21 @@ extension _point_of_saleExt on _DashboardScreenState {
                       final int crossAxisCount;
                       final double childAspectRatio;
 
-                      if (availableWidth < 320) {
+                      if (availableWidth < 340) {
                         crossAxisCount = 1;
-                        childAspectRatio = 1.35;
-                      } else if (availableWidth < 520) {
+                        childAspectRatio = 1.5;
+                      } else if (availableWidth < 540) {
                         crossAxisCount = 2;
-                        childAspectRatio = 0.70;
-                      } else if (availableWidth < 800) {
+                        childAspectRatio = 0.95;
+                      } else if (availableWidth < 850) {
                         crossAxisCount = 3;
-                        childAspectRatio = 0.71;
-                      } else {
+                        childAspectRatio = 0.97;
+                      } else if (availableWidth < 1200) {
                         crossAxisCount = 4;
-                        childAspectRatio = 0.72;
+                        childAspectRatio = 0.97;
+                      } else {
+                        crossAxisCount = 5;
+                        childAspectRatio = 1.0;
                       }
 
                       return GridView.builder(
@@ -2050,7 +2053,7 @@ extension _point_of_saleExt on _DashboardScreenState {
                           final isOutOfStock = displayStock <= 0;
 
                           Widget cardContent = GlassContainer(
-                            padding: const EdgeInsets.all(10),
+                            padding: const EdgeInsets.all(8),
                             borderRadius: UiRadius.md,
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -2077,56 +2080,63 @@ extension _point_of_saleExt on _DashboardScreenState {
                                                 : null;
 
                                         Widget imageWidget;
-                                        if (imgPath != null) {
+                                        if (imgPath != null && imgPath.trim().isNotEmpty) {
                                           imageWidget = Container(
-                                            height: 100,
+                                            height: 96,
                                             width: double.infinity,
                                             decoration: BoxDecoration(
                                               borderRadius: BorderRadius.circular(
                                                 UiRadius.sm,
                                               ),
-                                              boxShadow: [
-                                                BoxShadow(
-                                                  color: Colors.black.withValues(
-                                                    alpha: 0.08,
-                                                  ),
-                                                  blurRadius: 5,
-                                                  offset: const Offset(0, 2),
-                                                ),
-                                              ],
+                                              border: Border.all(
+                                                color: isDark
+                                                    ? Colors.white.withValues(alpha: 0.08)
+                                                    : Colors.black.withValues(alpha: 0.06),
+                                                width: 0.8,
+                                              ),
                                             ),
                                             child: AppImage(
                                               imageUrl: imgPath,
-                                              height: 100,
+                                              height: 96,
                                               width: double.infinity,
                                               fit: BoxFit.cover,
                                               borderRadius: BorderRadius.circular(UiRadius.sm),
                                               placeholder: Container(
-                                                decoration: BoxDecoration(
-                                                  gradient: UiGradients.brand,
-                                                  borderRadius: BorderRadius.circular(UiRadius.sm),
-                                                ),
+                                                color: isDark
+                                                    ? const Color(0xFF262338)
+                                                    : const Color(0xFFF1F5F9),
                                                 alignment: Alignment.center,
-                                                child: const Icon(Icons.inventory_2_outlined, color: Colors.white, size: 28),
+                                                child: Icon(
+                                                  Icons.image_outlined,
+                                                  color: isDark ? Colors.white38 : Colors.grey[400],
+                                                  size: 26,
+                                                ),
                                               ),
                                               errorWidget: Container(
-                                                decoration: BoxDecoration(
-                                                  gradient: UiGradients.brand,
-                                                  borderRadius: BorderRadius.circular(UiRadius.sm),
-                                                ),
+                                                color: isDark
+                                                    ? const Color(0xFF262338)
+                                                    : const Color(0xFFF1F5F9),
                                                 alignment: Alignment.center,
                                                 child: Column(
                                                   mainAxisAlignment: MainAxisAlignment.center,
                                                   children: [
-                                                    const Icon(Icons.inventory_2_outlined, color: Colors.white, size: 28),
-                                                    const SizedBox(height: 4),
+                                                    Icon(
+                                                      Icons.inventory_2_outlined,
+                                                      color: isDark
+                                                          ? const Color(0xFFA5B4FC)
+                                                          : const Color(0xFF6366F1),
+                                                      size: 22,
+                                                    ),
+                                                    const SizedBox(height: 2),
                                                     Text(
                                                       p.name.isNotEmpty
                                                           ? p.name[0].toUpperCase()
                                                           : 'P',
-                                                      style: const TextStyle(
-                                                        color: Colors.white,
-                                                        fontSize: 16,
+                                                      style: TextStyle(
+                                                        color: isDark
+                                                            ? const Color(0xFFA5B4FC)
+                                                            : const Color(0xFF4F46E5),
+                                                        fontSize: 13,
                                                         fontWeight: FontWeight.bold,
                                                       ),
                                                     ),
@@ -2137,37 +2147,57 @@ extension _point_of_saleExt on _DashboardScreenState {
                                           );
                                         } else {
                                           imageWidget = Container(
-                                            height: 90,
+                                            height: 96,
                                             width: double.infinity,
                                             decoration: BoxDecoration(
-                                              gradient: UiGradients.brand,
+                                              color: isDark
+                                                  ? const Color(0xFF262338)
+                                                  : const Color(0xFFF1F5F9),
                                               borderRadius: BorderRadius.circular(
                                                 UiRadius.sm,
                                               ),
-                                              boxShadow: [
-                                                BoxShadow(
-                                                  color: const Color(
-                                                    0xFF6366F1,
-                                                  ).withValues(alpha: 0.15),
-                                                  blurRadius: 6,
-                                                  offset: const Offset(0, 2),
-                                                ),
-                                              ],
+                                              border: Border.all(
+                                                color: isDark
+                                                    ? const Color(0xFF3B3556)
+                                                    : const Color(0xFFE2E8F0),
+                                                width: 0.8,
+                                              ),
                                             ),
                                             alignment: Alignment.center,
                                             child: Column(
                                               mainAxisAlignment: MainAxisAlignment.center,
                                               children: [
-                                                const Icon(Icons.inventory_2_outlined, color: Colors.white70, size: 26),
+                                                Icon(
+                                                  Icons.inventory_2_outlined,
+                                                  color: isDark
+                                                      ? const Color(0xFFA5B4FC)
+                                                      : const Color(0xFF6366F1),
+                                                  size: 24,
+                                                ),
                                                 const SizedBox(height: 4),
-                                                Text(
-                                                  p.name.isNotEmpty
-                                                      ? p.name[0].toUpperCase()
-                                                      : 'P',
-                                                  style: const TextStyle(
-                                                    color: Colors.white,
-                                                    fontSize: 18,
-                                                    fontWeight: FontWeight.bold,
+                                                Container(
+                                                  padding: const EdgeInsets.symmetric(
+                                                    horizontal: 8,
+                                                    vertical: 2,
+                                                  ),
+                                                  decoration: BoxDecoration(
+                                                    color: (isDark
+                                                            ? const Color(0xFF6366F1)
+                                                            : const Color(0xFF4F46E5))
+                                                        .withValues(alpha: 0.12),
+                                                    borderRadius: BorderRadius.circular(5),
+                                                  ),
+                                                  child: Text(
+                                                    p.name.isNotEmpty
+                                                        ? p.name[0].toUpperCase()
+                                                        : 'P',
+                                                    style: TextStyle(
+                                                      color: isDark
+                                                          ? const Color(0xFFA5B4FC)
+                                                          : const Color(0xFF4F46E5),
+                                                      fontSize: 13,
+                                                      fontWeight: FontWeight.w800,
+                                                    ),
                                                   ),
                                                 ),
                                               ],
@@ -2180,16 +2210,16 @@ extension _point_of_saleExt on _DashboardScreenState {
                                             children: [
                                               imageWidget,
                                               Positioned(
-                                                top: 6,
-                                                left: 6,
+                                                top: 5,
+                                                left: 5,
                                                 child: Container(
                                                   padding: const EdgeInsets.symmetric(
                                                     horizontal: 6,
-                                                    vertical: 2.5,
+                                                    vertical: 2,
                                                   ),
                                                   decoration: BoxDecoration(
                                                     color: Colors.black.withValues(alpha: 0.65),
-                                                    borderRadius: BorderRadius.circular(5),
+                                                    borderRadius: BorderRadius.circular(4),
                                                   ),
                                                   child: Row(
                                                     mainAxisSize: MainAxisSize.min,
@@ -2199,9 +2229,9 @@ extension _point_of_saleExt on _DashboardScreenState {
                                                         size: 9.5,
                                                         color: Colors.white,
                                                       ),
-                                                      const SizedBox(width: 3.5),
+                                                      const SizedBox(width: 3),
                                                       ConstrainedBox(
-                                                        constraints: const BoxConstraints(maxWidth: 80),
+                                                        constraints: const BoxConstraints(maxWidth: 85),
                                                         child: Text(
                                                           p.category.trim(),
                                                           maxLines: 1,
@@ -2224,64 +2254,20 @@ extension _point_of_saleExt on _DashboardScreenState {
                                       },
                                     ),
                                     const SizedBox(height: 6),
-                                    Text(
-                                      p.name,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 13,
-                                        color: colorScheme.onSurface,
+                                    Tooltip(
+                                      message: p.name,
+                                      child: Text(
+                                        p.name,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 12.5,
+                                          height: 1.25,
+                                          color: colorScheme.onSurface,
+                                        ),
                                       ),
                                     ),
-                                    if (p.category.trim().isNotEmpty) ...[
-                                      const SizedBox(height: 3),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 6,
-                                          vertical: 2,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: isDark
-                                              ? const Color(0xFF6366F1).withValues(alpha: 0.18)
-                                              : const Color(0xFFEEF2FF),
-                                          borderRadius: BorderRadius.circular(4),
-                                          border: Border.all(
-                                            color: isDark
-                                                ? const Color(0xFF818CF8).withValues(alpha: 0.35)
-                                                : const Color(0xFFC7D2FE),
-                                            width: 0.8,
-                                          ),
-                                        ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Icon(
-                                              Icons.label_outline_rounded,
-                                              size: 10,
-                                              color: isDark
-                                                  ? const Color(0xFFA5B4FC)
-                                                  : const Color(0xFF4F46E5),
-                                            ),
-                                            const SizedBox(width: 3),
-                                            Flexible(
-                                              child: Text(
-                                                p.category.trim(),
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                                style: TextStyle(
-                                                  fontSize: 9.5,
-                                                  fontWeight: FontWeight.w600,
-                                                  color: isDark
-                                                      ? const Color(0xFFA5B4FC)
-                                                      : const Color(0xFF4F46E5),
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
                                     const SizedBox(height: 2),
                                     Text(
                                       displayMatches.length > 1
@@ -2293,7 +2279,7 @@ extension _point_of_saleExt on _DashboardScreenState {
                                         color: colorScheme.onSurface.withValues(
                                           alpha: 0.5,
                                         ),
-                                        fontSize: 10.5,
+                                        fontSize: 10,
                                       ),
                                     ),
                                     if (isAllLocations &&
@@ -2307,7 +2293,7 @@ extension _point_of_saleExt on _DashboardScreenState {
                                           color: colorScheme.onSurface.withValues(
                                             alpha: 0.55,
                                           ),
-                                          fontSize: 10.5,
+                                          fontSize: 10,
                                           fontWeight: FontWeight.w500,
                                         ),
                                       ),
@@ -2324,7 +2310,7 @@ extension _point_of_saleExt on _DashboardScreenState {
                                         overflow: TextOverflow.ellipsis,
                                         style: TextStyle(
                                           color: AppTheme.brandIndigo,
-                                          fontWeight: FontWeight.w700,
+                                          fontWeight: FontWeight.w800,
                                           fontSize: displayMatches.length > 1
                                               ? 11.5
                                               : 13,

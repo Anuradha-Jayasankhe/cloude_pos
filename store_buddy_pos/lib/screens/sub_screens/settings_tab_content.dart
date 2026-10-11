@@ -1000,9 +1000,25 @@ extension _settings_tab_contentExt on _DashboardScreenState {
                   if (_companyLogoPath.isNotEmpty) ...[
                     IconButton(
                       tooltip: 'Remove logo',
-                      onPressed: () {
-                        setState(() => _companyLogoPath = '');
-                        _persistWorkspaceData();
+                      onPressed: () async {
+                        setState(() {
+                          _companyLogoPath = '';
+                          _receiptShowLogo = false;
+                        });
+                        final prefs = await SharedPreferences.getInstance();
+                        await prefs.remove('company_logo_path');
+                        await prefs.setBool('bill_show_logo', false);
+                        await _persistWorkspaceData();
+                        if (_appDatabase != null) {
+                          try {
+                            final existing = await _appDatabase!.getPrintSettings(_activeTenantId ?? 'local');
+                            if (existing != null) {
+                              await _appDatabase!.upsertPrintSettings(
+                                existing.toCompanion(true).copyWith(showLogo: const Value(false)),
+                              );
+                            }
+                          } catch (_) {}
+                        }
                       },
                       icon: const Icon(Icons.delete_outline),
                     ),
@@ -1012,8 +1028,24 @@ extension _settings_tab_contentExt on _DashboardScreenState {
                     onPressed: () async {
                       final path = await _pickImagePath();
                       if (path == null || path.isEmpty) return;
-                      setState(() => _companyLogoPath = path);
-                      _persistWorkspaceData();
+                      setState(() {
+                        _companyLogoPath = path;
+                        _receiptShowLogo = true;
+                      });
+                      final prefs = await SharedPreferences.getInstance();
+                      await prefs.setString('company_logo_path', path);
+                      await prefs.setBool('bill_show_logo', true);
+                      await _persistWorkspaceData();
+                      if (_appDatabase != null) {
+                        try {
+                          final existing = await _appDatabase!.getPrintSettings(_activeTenantId ?? 'local');
+                          if (existing != null) {
+                            await _appDatabase!.upsertPrintSettings(
+                              existing.toCompanion(true).copyWith(showLogo: const Value(true)),
+                            );
+                          }
+                        } catch (_) {}
+                      }
 
                       // Auto-upload to sync server so all devices get this logo
                       try {
@@ -1024,7 +1056,8 @@ extension _settings_tab_contentExt on _DashboardScreenState {
                         );
                         if (serverUrl != null && serverUrl.isNotEmpty) {
                           setState(() => _companyLogoPath = serverUrl);
-                          _persistWorkspaceData();
+                          await prefs.setString('company_logo_path', serverUrl);
+                          await _persistWorkspaceData();
                         }
                       } catch (e) {
                         debugPrint('[Settings] Logo upload error: $e');
@@ -1033,6 +1066,96 @@ extension _settings_tab_contentExt on _DashboardScreenState {
                     child: const Text('Upload Logo'),
                   ),
                 ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            Container(
+              decoration: BoxDecoration(
+                color: _receiptShowLogo
+                    ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.06)
+                    : Theme.of(context).colorScheme.surface.withValues(alpha: 0.6),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: _receiptShowLogo
+                      ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.35)
+                      : Theme.of(context).colorScheme.outline.withValues(alpha: 0.5),
+                  width: _receiptShowLogo ? 1.4 : 1.0,
+                ),
+              ),
+              child: SwitchListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                value: _receiptShowLogo,
+                onChanged: _companyLogoPath.isEmpty
+                    ? null
+                    : (val) async {
+                        setState(() => _receiptShowLogo = val);
+                        final prefs = await SharedPreferences.getInstance();
+                        await prefs.setBool('bill_show_logo', val);
+                        await _persistWorkspaceData();
+                        if (_appDatabase != null) {
+                          try {
+                            final existing = await _appDatabase!.getPrintSettings(_activeTenantId ?? 'local');
+                            if (existing != null) {
+                              await _appDatabase!.upsertPrintSettings(
+                                existing.toCompanion(true).copyWith(showLogo: Value(val)),
+                              );
+                            }
+                          } catch (_) {}
+                        }
+                      },
+                title: Row(
+                  children: [
+                    Text(
+                      'Print Logo at Top of Receipts',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13.5,
+                        color: _receiptShowLogo
+                            ? Theme.of(context).colorScheme.primary
+                            : Theme.of(context).colorScheme.onSurface,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: _receiptShowLogo
+                            ? Colors.green.withValues(alpha: 0.15)
+                            : Colors.grey.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        _receiptShowLogo ? 'ON' : 'OFF',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          color: _receiptShowLogo ? Colors.green : Colors.grey,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                subtitle: Padding(
+                  padding: const EdgeInsets.only(top: 3),
+                  child: Text(
+                    _companyLogoPath.isEmpty
+                        ? 'Upload a company logo first to enable printing it at the top of receipts.'
+                        : (_receiptShowLogo
+                            ? 'Enabled: Store logo will be printed centered at the very top of customer receipts.'
+                            : 'Disabled: Customer receipts will be printed without the store logo.'),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
+                    ),
+                  ),
+                ),
+                secondary: Icon(
+                  Icons.receipt_long_rounded,
+                  color: _receiptShowLogo
+                      ? Theme.of(context).colorScheme.primary
+                      : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
+                  size: 26,
+                ),
               ),
             ),
           ],

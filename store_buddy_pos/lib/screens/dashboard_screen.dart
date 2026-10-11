@@ -4734,6 +4734,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
           _barcodeRightShiftMm = 0.0;
           _barcodeTopShiftMm = 0.0;
           break;
+        case 'gprinter_2120_1col':
+          _barcodePreset = 'gprinter_2120_1col';
+          _barcodePrinterType = 'thermal';
+          _barcodePaperFormat = 'custom_roll';
+          _barcodePaperWidthMm = 58.0;
+          _barcodeLabelWidthMm = 50.0;
+          _barcodeLabelHeightMm = 30.0;
+          _barcodeColumns = 1;
+          _barcodeHorizontalGapMm = 0.0;
+          _barcodeVerticalGapMm = 2.0;
+          _barcodeMarginMm = 1.0;
+          _barcodeRightShiftMm = 0.0;
+          _barcodeTopShiftMm = 0.0;
+          _barcodeHeightMm = 7.0;
+          _barcodeFontScale = 0.85;
+          break;
         case 'generic_58mm_1col':
         case 'generic_58mm_roll':
           _barcodePreset = 'generic_58mm_1col';
@@ -7089,6 +7105,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     };
 
     await prefs.setString(_tenantWorkspaceStateKey, jsonEncode(payload));
+    await prefs.setBool('bill_show_logo', _receiptShowLogo);
+    if (_companyLogoPath.isNotEmpty) {
+      await prefs.setString('company_logo_path', _companyLogoPath);
+    }
   }
 
   Future<void> _loadPersistedWorkspaceData() async {
@@ -7519,7 +7539,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _receiptHeader = settings['receiptHeader'] ?? _receiptHeader;
         _receiptFooter = settings['receiptFooter'] ?? _receiptFooter;
         _receiptShowTax = settings['receiptShowTax'] ?? _receiptShowTax;
-        _receiptShowLogo = settings['receiptShowLogo'] ?? _receiptShowLogo;
+        _receiptShowLogo = prefs.getBool('bill_show_logo') ?? (settings['receiptShowLogo'] ?? _receiptShowLogo);
         _receiptShowCompanyName =
             settings['receiptShowCompanyName'] ?? _receiptShowCompanyName;
         _receiptShowShopAddress =
@@ -8655,7 +8675,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       printerType: isA4 ? 'A4' : (rawSettings?.printerType ?? 'THERMAL'),
       invoiceTemplate: rawSettings?.invoiceTemplate ?? 'PROFESSIONAL',
       autoPrint: _localAutoPrintOnSaleComplete,
-      showLogo: prefs.getBool('bill_show_logo') ?? (_receiptShowLogo && (rawSettings?.showLogo ?? true)),
+      showLogo: _companyLogoPath.isNotEmpty && (prefs.getBool('bill_show_logo') ?? _receiptShowLogo),
       logoUrl: _companyLogoPath.isNotEmpty ? _companyLogoPath : null,
       showBarcode: prefs.getBool('bill_show_barcode') ?? (_receiptShowReceiptNumber && (rawSettings?.showBarcode ?? false)),
       showQr: prefs.getBool('bill_show_qr') ?? (rawSettings?.showQr ?? true),

@@ -79,6 +79,7 @@ class _PrintSettingsContentState extends State<PrintSettingsContent> {
   final TextEditingController _socialLinksController = TextEditingController();
 
   bool _showLogo = true;
+  String? _logoUrl;
   bool _showBarcode = false;
   bool _showQr = true;
   double _fontSize = 8.5;
@@ -168,7 +169,11 @@ class _PrintSettingsContentState extends State<PrintSettingsContent> {
         _settings = existing;
         _printerType = existing.printerType;
         _invoiceTemplate = existing.invoiceTemplate;
-        _showLogo = existing.showLogo;
+        _showLogo = prefs.getBool('bill_show_logo') ?? existing.showLogo;
+        _logoUrl = (context.findAncestorStateOfType<_DashboardScreenState>())?._companyLogoPath;
+        if (_logoUrl == null || _logoUrl!.isEmpty) {
+          _logoUrl = prefs.getString('company_logo_path');
+        }
         _showBarcode = existing.showBarcode;
         _showQr = existing.showQr;
         _fontSize = prefs.getDouble('bill_font_size') ?? ((existing.fontSize <= 0 || existing.fontSize == 10) ? 8.5 : existing.fontSize);
@@ -247,6 +252,7 @@ class _PrintSettingsContentState extends State<PrintSettingsContent> {
       );
 
       // 3. Save Bill Structure Toggles
+      await prefs.setBool('bill_show_logo', _showLogo);
       await prefs.setBool('bill_show_shop_header', _showShopHeader);
       await prefs.setBool('bill_show_slogan', _showSlogan);
       await prefs.setString('bill_invoice_slogan', _sloganController.text.trim());
@@ -524,7 +530,8 @@ class _PrintSettingsContentState extends State<PrintSettingsContent> {
       printerType: _printerType,
       invoiceTemplate: _invoiceTemplate,
       autoPrint: _autoPrint,
-      showLogo: _showLogo,
+      showLogo: _showLogo && _logoUrl != null && _logoUrl!.isNotEmpty,
+      logoUrl: _logoUrl,
       showBarcode: _showBarcode,
       showQr: _showQr,
       showTax: _showTax,
@@ -802,7 +809,8 @@ class _PrintSettingsContentState extends State<PrintSettingsContent> {
       printerType: _printerType,
       invoiceTemplate: _invoiceTemplate,
       autoPrint: _autoPrint,
-      showLogo: _showLogo,
+      showLogo: _showLogo && _logoUrl != null && _logoUrl!.isNotEmpty,
+      logoUrl: _logoUrl,
       showBarcode: _showBarcode,
       showQr: _showQr,
       showTax: _showTax,
@@ -1351,6 +1359,7 @@ class _PrintSettingsContentState extends State<PrintSettingsContent> {
                   spacing: 12,
                   runSpacing: 10,
                   children: [
+                    _buildToggleBox(context, 'Show Store Logo', _showLogo, (v) => setState(() => _showLogo = v)),
                     _buildToggleBox(context, 'Show Shop Header', _showShopHeader, (v) => setState(() => _showShopHeader = v)),
                     _buildToggleBox(context, 'Show Slogan', _showSlogan, (v) => setState(() => _showSlogan = v)),
                     _buildToggleBox(context, 'Show Invoice Number', _showInvoiceNumber, (v) => setState(() => _showInvoiceNumber = v)),
