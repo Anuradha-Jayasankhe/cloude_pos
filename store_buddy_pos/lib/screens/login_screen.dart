@@ -50,7 +50,7 @@ class _LoginText {
 }
 
 class _LoginSize {
-  static const desktopBreakpoint = 980.0;
+  static const desktopBreakpoint = 740.0;
   static const contentMaxWidth = 1280.0;
   static const desktopHeight = 780.0;
   static const mobileHeaderHeight = 240.0;
@@ -392,8 +392,8 @@ class _LoginScreenState extends State<LoginScreen>
   Widget _buildDesktopLayout(BuildContext context) {
     return SafeArea(
       child: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
           child: ConstrainedBox(
             constraints: const BoxConstraints(
               maxWidth: _LoginSize.contentMaxWidth,

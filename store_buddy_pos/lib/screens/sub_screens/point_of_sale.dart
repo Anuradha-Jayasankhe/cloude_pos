@@ -5538,6 +5538,51 @@ extension _point_of_saleExt on _DashboardScreenState {
 
     final confirmed = await _showPosCheckoutModalFlow();
     if (confirmed == true && mounted) {
+      // Prompt for shopping bag selection before final checkout (if enabled in settings)
+      if (_enableShoppingBagCharges) {
+        // Wait for checkout modal to finish popping completely to avoid Navigator transition conflicts
+        await Future.delayed(const Duration(milliseconds: 100));
+        if (!mounted) return;
+
+        final bagResult = await _showShoppingBagConfirmationDialog(
+          parentContext: context,
+          currentGrandTotal: _calculateCurrentGrandTotal(),
+          paymentMethod: _paymentMethodController.text,
+        );
+
+        if (bagResult == null) {
+          // Cashier closed or cancelled with Escape
+          if (mounted) {
+            ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+              const SnackBar(
+                content: Text('Sale completion cancelled.'),
+                duration: Duration(seconds: 2),
+              ),
+            );
+          }
+          return;
+        }
+
+        if (bagResult.hasBags) {
+          bagResult.applyToCart(_temporaryCartProducts, _cart);
+          final bagCost = bagResult.totalCost;
+          final currentPaid =
+              double.tryParse(_amountPaidController.text.trim()) ?? 0.0;
+          final newGrandTotal = _calculateCurrentGrandTotal();
+
+          final currentMethod =
+              _paymentMethodController.text.trim().toUpperCase();
+          if (currentMethod == 'CASH') {
+            if ((currentPaid - (newGrandTotal - bagCost)).abs() < 0.05 ||
+                currentPaid < newGrandTotal) {
+              _amountPaidController.text = newGrandTotal.toStringAsFixed(2);
+            }
+          } else if (currentMethod != 'CREDIT') {
+            _amountPaidController.text = newGrandTotal.toStringAsFixed(2);
+          }
+        }
+      }
+
       await _processPosCheckout();
     }
   }
@@ -5613,6 +5658,7 @@ extension _point_of_saleExt on _DashboardScreenState {
     int currentStep = 0;
     bool customerWasSkipped = false;
     int highlightedCustomerIndex = 0;
+    bool promptChoiceAddCustomer = false;
 
     final FocusNode stepFocusNode = FocusNode();
     final FocusNode paidInputFocus = FocusNode();
@@ -5651,6 +5697,7 @@ extension _point_of_saleExt on _DashboardScreenState {
             );
           });
         } else {
+          promptChoiceAddCustomer = false;
           dialogSetState?.call(() {
             currentStep = 1;
           });
@@ -5774,6 +5821,7 @@ extension _point_of_saleExt on _DashboardScreenState {
     void completeFinal() {
       _paymentMethodController.text = currentMethod;
       _amountPaidController.text = modalPaidController.text.trim();
+
       if (activeDialogContext != null && Navigator.canPop(activeDialogContext!)) {
         Navigator.pop(activeDialogContext!, true);
       }
@@ -5854,7 +5902,7 @@ extension _point_of_saleExt on _DashboardScreenState {
           onMethodChosen();
           return true;
         } else if (currentStep == 1) {
-          onCustomerPromptAnswer(false);
+          onCustomerPromptAnswer(promptChoiceAddCustomer);
           return true;
         } else if (currentStep == 2) {
           onCustomerStepNext();
@@ -5938,10 +5986,22 @@ extension _point_of_saleExt on _DashboardScreenState {
           return true;
         }
       } else if (currentStep == 1) {
-        if (event.logicalKey == LogicalKeyboardKey.keyN) {
+        if (event.logicalKey == LogicalKeyboardKey.arrowLeft ||
+            event.logicalKey == LogicalKeyboardKey.arrowUp) {
+          promptChoiceAddCustomer = false;
+          dialogSetState?.call(() {});
+          return true;
+        } else if (event.logicalKey == LogicalKeyboardKey.arrowRight ||
+                   event.logicalKey == LogicalKeyboardKey.arrowDown) {
+          promptChoiceAddCustomer = true;
+          dialogSetState?.call(() {});
+          return true;
+        } else if (event.logicalKey == LogicalKeyboardKey.keyN) {
+          promptChoiceAddCustomer = false;
           onCustomerPromptAnswer(false);
           return true;
         } else if (event.logicalKey == LogicalKeyboardKey.keyY) {
+          promptChoiceAddCustomer = true;
           onCustomerPromptAnswer(true);
           return true;
         }
@@ -6147,6 +6207,11 @@ extension _point_of_saleExt on _DashboardScreenState {
                           : currentStep == 1
                               ? _buildStep1CustomerPrompt(
                                   isDark: isDark,
+                                  wantsCustomer: promptChoiceAddCustomer,
+                                  onToggleChoice: (val) {
+                                    promptChoiceAddCustomer = val;
+                                    setDlgState(() {});
+                                  },
                                   onSkip: () => onCustomerPromptAnswer(false),
                                   onAddCustomer: () => onCustomerPromptAnswer(true),
                                 )
@@ -6250,11 +6315,22 @@ extension _point_of_saleExt on _DashboardScreenState {
                       )
                     else if (currentStep == 1)
                       ElevatedButton.icon(
-                        onPressed: () => onCustomerPromptAnswer(false),
-                        icon: const Icon(Icons.flash_on_rounded, size: 16),
-                        label: const Text('Skip (Enter) • නැත'),
+                        onPressed: () => onCustomerPromptAnswer(promptChoiceAddCustomer),
+                        icon: Icon(
+                          promptChoiceAddCustomer
+                              ? Icons.person_add_alt_1_rounded
+                              : Icons.flash_on_rounded,
+                          size: 16,
+                        ),
+                        label: Text(
+                          promptChoiceAddCustomer
+                              ? 'Add Customer (Enter) • ඔව්'
+                              : 'Skip (Enter) • නැත (Walk-in)',
+                        ),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: AppTheme.brandIndigo,
+                          backgroundColor: promptChoiceAddCustomer
+                              ? const Color(0xFF10B981)
+                              : AppTheme.brandIndigo,
                           foregroundColor: Colors.white,
                         ),
                       )
@@ -6469,9 +6545,102 @@ extension _point_of_saleExt on _DashboardScreenState {
 
   Widget _buildStep1CustomerPrompt({
     required bool isDark,
+    required bool wantsCustomer,
+    required ValueChanged<bool> onToggleChoice,
     required VoidCallback onSkip,
     required VoidCallback onAddCustomer,
   }) {
+    Widget buildChoiceCard({
+      required bool isSelected,
+      required Color activeColor,
+      required IconData icon,
+      required String title,
+      required String shortcutHint,
+      required VoidCallback onTap,
+    }) {
+      return Expanded(
+        child: InkWell(
+          canRequestFocus: false,
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(10),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 10),
+            decoration: BoxDecoration(
+              color: isSelected
+                  ? activeColor
+                  : (isDark ? const Color(0xFF0F172A) : Colors.white),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: isSelected
+                    ? activeColor
+                    : (isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1)),
+                width: isSelected ? 2.0 : 1.5,
+              ),
+              boxShadow: isSelected
+                  ? [
+                      BoxShadow(
+                        color: activeColor.withValues(alpha: 0.3),
+                        blurRadius: 8,
+                        offset: const Offset(0, 3),
+                      ),
+                    ]
+                  : null,
+            ),
+            child: Column(
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      icon,
+                      size: 20,
+                      color: isSelected ? Colors.white : activeColor,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.bold,
+                        color: isSelected
+                            ? Colors.white
+                            : (isDark ? Colors.white : Colors.black87),
+                      ),
+                    ),
+                    if (isSelected) ...[
+                      const SizedBox(width: 4),
+                      const Icon(Icons.check_circle_rounded, size: 15, color: Colors.white),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? Colors.white.withValues(alpha: 0.22)
+                        : (isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05)),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    shortcutHint,
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w600,
+                      color: isSelected
+                          ? Colors.white
+                          : (isDark ? Colors.grey.shade400 : Colors.grey.shade700),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     return Column(
       key: const ValueKey(1),
       mainAxisSize: MainAxisSize.min,
@@ -6511,38 +6680,49 @@ extension _point_of_saleExt on _DashboardScreenState {
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 12.5, color: Colors.grey),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppTheme.brandIndigo.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: AppTheme.brandIndigo.withValues(alpha: 0.2)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.keyboard_outlined, size: 14, color: AppTheme.brandIndigo),
+                    const SizedBox(width: 5),
+                    Text(
+                      '◄ ► ඊතල (Arrow keys) මඟින් තෝරා Enter ඔබන්න  •  [N / Y කෙටිමං]',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.brandIndigo,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
               Row(
                 children: [
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      autofocus: true,
-                      onPressed: onSkip,
-                      icon: const Icon(Icons.flash_on_rounded, size: 16),
-                      label: const Text('නැත (Walk-in) [Enter]'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppTheme.brandIndigo,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                    ),
+                  buildChoiceCard(
+                    isSelected: !wantsCustomer,
+                    activeColor: AppTheme.brandIndigo,
+                    icon: Icons.flash_on_rounded,
+                    title: 'නැත (Walk-in)',
+                    shortcutHint: !wantsCustomer ? '[Enter / N] • තෝරා ඇත' : '[N] කෙටිමඟ',
+                    onTap: onSkip,
                   ),
                   const SizedBox(width: 12),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: onAddCustomer,
-                      icon: const Icon(Icons.person_search_rounded, size: 16),
-                      label: const Text('ඔව් (Add Customer) [Y]'),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                    ),
+                  buildChoiceCard(
+                    isSelected: wantsCustomer,
+                    activeColor: const Color(0xFF10B981),
+                    icon: Icons.person_search_rounded,
+                    title: 'ඔව් (Add Customer)',
+                    shortcutHint: wantsCustomer ? '[Enter / Y] • තෝරා ඇත' : '[Y] කෙටිමඟ',
+                    onTap: onAddCustomer,
                   ),
                 ],
               ),
@@ -7301,6 +7481,719 @@ extension _point_of_saleExt on _DashboardScreenState {
     );
   }
 
+
+
+  Future<_ShoppingBagSelectionResult?> _showShoppingBagConfirmationDialog({
+    required BuildContext parentContext,
+    required double currentGrandTotal,
+    required String paymentMethod,
+  }) async {
+    final List<_ShoppingBagEntry> bagEntries = [
+      _ShoppingBagEntry(
+        id: 'BAG_SM_5',
+        name: 'Shopping Bag (Small - කුඩා)',
+        price: _posBagPriceSmall,
+        quantity: 0,
+        label: 'Small Bag (කුඩා)',
+        shortcutKey: '1',
+      ),
+      _ShoppingBagEntry(
+        id: 'BAG_MD_10',
+        name: 'Shopping Bag (Medium - මධ්‍යම)',
+        price: _posBagPriceMedium,
+        quantity: 0,
+        label: 'Medium Bag (මධ්‍යම)',
+        shortcutKey: '2',
+      ),
+      _ShoppingBagEntry(
+        id: 'BAG_LG_20',
+        name: 'Shopping Bag (Large - විශාල)',
+        price: _posBagPriceLarge,
+        quantity: 0,
+        label: 'Large Bag (විශාල)',
+        shortcutKey: '3',
+      ),
+      _ShoppingBagEntry(
+        id: 'BAG_CUSTOM',
+        name: 'Shopping Bag (Custom - වෙනත්)',
+        price: _posBagPriceCustom,
+        quantity: 0,
+        label: 'Custom Bag (වෙනත්)',
+        shortcutKey: '4',
+        isCustom: true,
+      ),
+    ];
+
+    bool addBags = false;
+    int focusedBagIndex = 0;
+    final customPriceController = TextEditingController(
+      text: _posBagPriceCustom.toStringAsFixed(0),
+    );
+    final FocusNode customPriceFocus = FocusNode();
+
+    StateSetter? dialogSetState;
+    BuildContext? activeDialogContext;
+    bool isPopped = false;
+
+    void safePop([_ShoppingBagSelectionResult? res]) {
+      if (isPopped) return;
+      isPopped = true;
+      if (activeDialogContext != null && Navigator.canPop(activeDialogContext!)) {
+        Navigator.pop(activeDialogContext!, res);
+      }
+    }
+
+    bool handleHardwareKey(KeyEvent event) {
+      if (event is! KeyDownEvent) return false;
+
+      if (event.logicalKey == LogicalKeyboardKey.escape) {
+        safePop(null);
+        return true;
+      }
+
+      // If user is editing the custom price, do not intercept digits/shortcuts
+      if (customPriceFocus.hasFocus) {
+        if (event.logicalKey == LogicalKeyboardKey.enter ||
+            event.logicalKey == LogicalKeyboardKey.numpadEnter) {
+          customPriceFocus.unfocus();
+          return true;
+        }
+        return false;
+      }
+
+      if (!addBags) {
+        // Choice mode: "නැත" vs "ඔව්"
+        if (event.logicalKey == LogicalKeyboardKey.arrowRight ||
+            event.logicalKey == LogicalKeyboardKey.arrowDown ||
+            event.logicalKey == LogicalKeyboardKey.keyY) {
+          addBags = true;
+          dialogSetState?.call(() {});
+          return true;
+        } else if (event.logicalKey == LogicalKeyboardKey.enter ||
+                   event.logicalKey == LogicalKeyboardKey.numpadEnter ||
+                   event.logicalKey == LogicalKeyboardKey.keyN) {
+          safePop(_ShoppingBagSelectionResult(hasBags: false));
+          return true;
+        }
+      } else {
+        // Bag selection mode
+        if (event.logicalKey == LogicalKeyboardKey.keyN) {
+          addBags = false;
+          dialogSetState?.call(() {});
+          return true;
+        } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+          focusedBagIndex = (focusedBagIndex - 1 + bagEntries.length) % bagEntries.length;
+          dialogSetState?.call(() {});
+          return true;
+        } else if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+          focusedBagIndex = (focusedBagIndex + 1) % bagEntries.length;
+          dialogSetState?.call(() {});
+          return true;
+        } else if (event.logicalKey == LogicalKeyboardKey.arrowUp ||
+                   event.logicalKey == LogicalKeyboardKey.add ||
+                   event.logicalKey == LogicalKeyboardKey.equal) {
+          bagEntries[focusedBagIndex].quantity++;
+          dialogSetState?.call(() {});
+          return true;
+        } else if (event.logicalKey == LogicalKeyboardKey.arrowDown ||
+                   event.logicalKey == LogicalKeyboardKey.minus) {
+          if (bagEntries[focusedBagIndex].quantity > 0) {
+            bagEntries[focusedBagIndex].quantity--;
+            dialogSetState?.call(() {});
+          }
+          return true;
+        } else if (event.logicalKey == LogicalKeyboardKey.digit1 ||
+                   event.logicalKey == LogicalKeyboardKey.numpad1) {
+          bagEntries[0].quantity++;
+          focusedBagIndex = 0;
+          dialogSetState?.call(() {});
+          return true;
+        } else if (event.logicalKey == LogicalKeyboardKey.digit2 ||
+                   event.logicalKey == LogicalKeyboardKey.numpad2) {
+          bagEntries[1].quantity++;
+          focusedBagIndex = 1;
+          dialogSetState?.call(() {});
+          return true;
+        } else if (event.logicalKey == LogicalKeyboardKey.digit3 ||
+                   event.logicalKey == LogicalKeyboardKey.numpad3) {
+          bagEntries[2].quantity++;
+          focusedBagIndex = 2;
+          dialogSetState?.call(() {});
+          return true;
+        } else if (event.logicalKey == LogicalKeyboardKey.digit4 ||
+                   event.logicalKey == LogicalKeyboardKey.numpad4) {
+          bagEntries[3].quantity++;
+          focusedBagIndex = 3;
+          dialogSetState?.call(() {});
+          return true;
+        } else if (event.logicalKey == LogicalKeyboardKey.enter ||
+                   event.logicalKey == LogicalKeyboardKey.numpadEnter) {
+          final totalQty = bagEntries.fold<int>(0, (s, b) => s + b.quantity);
+          if (totalQty == 0) {
+            safePop(_ShoppingBagSelectionResult(hasBags: false));
+          } else {
+            safePop(
+              _ShoppingBagSelectionResult(
+                hasBags: true,
+                bags: bagEntries.where((b) => b.quantity > 0).toList(),
+              ),
+            );
+          }
+          return true;
+        }
+      }
+
+      return false;
+    }
+
+    HardwareKeyboard.instance.addHandler(handleHardwareKey);
+
+    try {
+      final result = await showDialog<_ShoppingBagSelectionResult>(
+        context: parentContext,
+        barrierDismissible: false,
+        builder: (dlgCtx) {
+          activeDialogContext = dlgCtx;
+          final isDark = Theme.of(dlgCtx).brightness == Brightness.dark;
+
+          return StatefulBuilder(
+            builder: (context, setDlgState) {
+              dialogSetState = setDlgState;
+              final totalBagCount = bagEntries.fold<int>(0, (s, b) => s + b.quantity);
+              final totalBagAmount = bagEntries.fold<double>(0.0, (s, b) => s + (b.price * b.quantity));
+              final newGrandTotal = currentGrandTotal + (addBags ? totalBagAmount : 0.0);
+
+              return Dialog(
+                backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                child: Container(
+                  width: 580,
+                  padding: const EdgeInsets.all(22),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Header
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: AppTheme.brandIndigo.withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Icon(
+                              Icons.shopping_bag_outlined,
+                              color: AppTheme.brandIndigo,
+                              size: 26,
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Shopping Bag Charges (ෂොපින් බෑග්)',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 17,
+                                  ),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  'මෙම Sale එක සඳහා Shopping Bag ගාස්තු එකතු කරනවාද?',
+                                  style: TextStyle(
+                                    fontSize: 12.5,
+                                    color: isDark ? Colors.grey.shade400 : const Color(0xFF64748B),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close_rounded, size: 20),
+                            onPressed: () => safePop(null),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 18),
+
+                      // Choice row: [නැත (No Bags)] vs [ඔව් (Add Bags)]
+                      Row(
+                        children: [
+                          Expanded(
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(10),
+                              onTap: () {
+                                setDlgState(() => addBags = false);
+                              },
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 150),
+                                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
+                                decoration: BoxDecoration(
+                                  color: !addBags
+                                      ? (isDark ? Colors.red.withValues(alpha: 0.18) : const Color(0xFFFEF2F2))
+                                      : (isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC)),
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(
+                                    color: !addBags
+                                        ? Colors.redAccent
+                                        : (isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0)),
+                                    width: !addBags ? 2 : 1,
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      !addBags ? Icons.cancel_rounded : Icons.radio_button_unchecked,
+                                      color: !addBags ? Colors.redAccent : Colors.grey,
+                                      size: 20,
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            'නැත (No Bags)',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 13.5,
+                                              color: !addBags ? Colors.redAccent : (isDark ? Colors.white : Colors.black87),
+                                            ),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            'ගාස්තු නැත [Enter / N]',
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(10),
+                              onTap: () {
+                                setDlgState(() => addBags = true);
+                              },
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 150),
+                                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
+                                decoration: BoxDecoration(
+                                  color: addBags
+                                      ? (isDark ? AppTheme.brandIndigo.withValues(alpha: 0.22) : const Color(0xFFEEF2FF))
+                                      : (isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC)),
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(
+                                    color: addBags
+                                        ? AppTheme.brandIndigo
+                                        : (isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0)),
+                                    width: addBags ? 2 : 1,
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      addBags ? Icons.check_circle_rounded : Icons.radio_button_unchecked,
+                                      color: addBags ? AppTheme.brandIndigo : Colors.grey,
+                                      size: 20,
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            'ඔව් (Add Bags)',
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 13.5,
+                                              color: addBags ? AppTheme.brandIndigo : (isDark ? Colors.white : Colors.black87),
+                                            ),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            'බෑග් එකතු කරන්න [Y / →]',
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+
+                      // If !addBags: Show fast checkout guide
+                      if (!addBags) ...[
+                        Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.info_outline, color: Color(0xFF64748B), size: 20),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  'බෑග් ගාස්තු එකතු නොකර Sale එක සම්පූර්ණ කිරීමට Enter ඔබන්න.\nබෑග් එකතු කිරීමට නම් ඉහත "ඔව්" තෝරන්න හෝ [Y] ඔබන්න.',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: isDark ? Colors.grey.shade300 : const Color(0xFF475569),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ] else ...[
+                        // 4 Bag Selection Cards
+                        Wrap(
+                          spacing: 10,
+                          runSpacing: 10,
+                          children: [
+                            for (int i = 0; i < bagEntries.length; i++)
+                              () {
+                                final bag = bagEntries[i];
+                                final isFocused = focusedBagIndex == i;
+                                return InkWell(
+                                  borderRadius: BorderRadius.circular(10),
+                                  onTap: () {
+                                    setDlgState(() {
+                                      focusedBagIndex = i;
+                                    });
+                                  },
+                                  child: Container(
+                                    width: 256,
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: isFocused
+                                          ? (isDark
+                                              ? AppTheme.brandIndigo.withValues(alpha: 0.18)
+                                              : const Color(0xFFEEF2FF))
+                                          : (isDark
+                                              ? const Color(0xFF0F172A)
+                                              : const Color(0xFFF8FAFC)),
+                                      borderRadius: BorderRadius.circular(10),
+                                      border: Border.all(
+                                        color: isFocused
+                                            ? AppTheme.brandIndigo
+                                            : (isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0)),
+                                        width: isFocused ? 2 : 1,
+                                      ),
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Row(
+                                              children: [
+                                                Container(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                  decoration: BoxDecoration(
+                                                    color: AppTheme.brandIndigo.withValues(alpha: 0.15),
+                                                    borderRadius: BorderRadius.circular(4),
+                                                  ),
+                                                  child: Text(
+                                                    '[${bag.shortcutKey}]',
+                                                    style: const TextStyle(
+                                                      fontFamily: 'monospace',
+                                                      fontWeight: FontWeight.bold,
+                                                      fontSize: 11,
+                                                      color: AppTheme.brandIndigo,
+                                                    ),
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 6),
+                                                Text(
+                                                  bag.label,
+                                                  style: const TextStyle(
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 12.5,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            if (bag.quantity > 0)
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                decoration: BoxDecoration(
+                                                  color: const Color(0xFF10B981).withValues(alpha: 0.2),
+                                                  borderRadius: BorderRadius.circular(4),
+                                                ),
+                                                child: Text(
+                                                  _money(bag.totalPrice),
+                                                  style: const TextStyle(
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 11.5,
+                                                    color: Color(0xFF10B981),
+                                                  ),
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Row(
+                                          children: [
+                                            Text(
+                                              'මිල: ',
+                                              style: TextStyle(
+                                                fontSize: 11.5,
+                                                color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                                              ),
+                                            ),
+                                            if (bag.isCustom)
+                                              SizedBox(
+                                                width: 80,
+                                                height: 28,
+                                                child: TextField(
+                                                  controller: customPriceController,
+                                                  focusNode: customPriceFocus,
+                                                  keyboardType: TextInputType.number,
+                                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                                                  decoration: const InputDecoration(
+                                                    prefixText: 'Rs. ',
+                                                    isDense: true,
+                                                    contentPadding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                                                    border: OutlineInputBorder(),
+                                                  ),
+                                                  onChanged: (val) {
+                                                    final p = double.tryParse(val) ?? 0.0;
+                                                    _posBagPriceCustom = p;
+                                                    bag.price = p;
+                                                    setDlgState(() {});
+                                                  },
+                                                ),
+                                              )
+                                            else
+                                              Text(
+                                                _money(bag.price),
+                                                style: const TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 12.5,
+                                                ),
+                                              ),
+                                            const Spacer(),
+                                            // Stepper [-] Qty [+]
+                                            InkWell(
+                                              onTap: () {
+                                                if (bag.quantity > 0) {
+                                                  setDlgState(() {
+                                                    bag.quantity--;
+                                                    focusedBagIndex = i;
+                                                  });
+                                                }
+                                              },
+                                              borderRadius: BorderRadius.circular(4),
+                                              child: Container(
+                                                padding: const EdgeInsets.all(4),
+                                                decoration: BoxDecoration(
+                                                  color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+                                                  borderRadius: BorderRadius.circular(4),
+                                                ),
+                                                child: const Icon(Icons.remove, size: 14),
+                                              ),
+                                            ),
+                                            Container(
+                                              constraints: const BoxConstraints(minWidth: 28),
+                                              alignment: Alignment.center,
+                                              padding: const EdgeInsets.symmetric(horizontal: 4),
+                                              child: Text(
+                                                '${bag.quantity}',
+                                                style: const TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 14,
+                                                ),
+                                              ),
+                                            ),
+                                            InkWell(
+                                              onTap: () {
+                                                setDlgState(() {
+                                                  bag.quantity++;
+                                                  focusedBagIndex = i;
+                                                });
+                                              },
+                                              borderRadius: BorderRadius.circular(4),
+                                              child: Container(
+                                                padding: const EdgeInsets.all(4),
+                                                decoration: BoxDecoration(
+                                                  color: AppTheme.brandIndigo,
+                                                  borderRadius: BorderRadius.circular(4),
+                                                ),
+                                                child: const Icon(Icons.add, size: 14, color: Colors.white),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              }(),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        // Navigation keyboard hints
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: isDark ? Colors.white.withValues(alpha: 0.04) : Colors.black.withValues(alpha: 0.03),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(
+                            'Shortcuts: [← →] තෝරන්න • [↑ / +] එකතු කරන්න • [↓ / -] අඩු කරන්න • [1-4] Quick Add',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                            ),
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 14),
+
+                      // Grand total display bar
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Row(
+                              children: [
+                                const Icon(Icons.receipt_long_outlined, size: 18, color: AppTheme.brandIndigo),
+                                const SizedBox(width: 8),
+                                Text(
+                                  addBags && totalBagCount > 0
+                                      ? 'Bags: $totalBagCount pcs (+${_money(totalBagAmount)})'
+                                      : 'Shopping Bags: None (Rs. 0.00)',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 12.5,
+                                    color: isDark ? Colors.grey.shade300 : const Color(0xFF334155),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            Text(
+                              'Grand Total: ${_money(newGrandTotal)}',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                                color: addBags && totalBagCount > 0
+                                    ? const Color(0xFF10B981)
+                                    : (isDark ? Colors.white : Colors.black87),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+
+                      // Action Buttons
+                      Row(
+                        children: [
+                          TextButton.icon(
+                            onPressed: () => safePop(null),
+                            icon: const Icon(Icons.arrow_back_rounded, size: 16),
+                            label: const Text('Back (Esc) • ආපසු'),
+                          ),
+                          const Spacer(),
+                          if (addBags) ...[
+                            OutlinedButton(
+                              onPressed: () {
+                                setDlgState(() => addBags = false);
+                              },
+                              child: const Text('Cancel Bags (N)'),
+                            ),
+                            const SizedBox(width: 8),
+                            ElevatedButton.icon(
+                              onPressed: () {
+                                final totalQty = bagEntries.fold<int>(0, (s, b) => s + b.quantity);
+                                if (totalQty == 0) {
+                                  safePop(_ShoppingBagSelectionResult(hasBags: false));
+                                } else {
+                                  safePop(
+                                    _ShoppingBagSelectionResult(
+                                      hasBags: true,
+                                      bags: bagEntries.where((b) => b.quantity > 0).toList(),
+                                    ),
+                                  );
+                                }
+                              },
+                              icon: const Icon(Icons.check_circle_outline_rounded, size: 18),
+                              label: Text(
+                                totalBagCount > 0
+                                    ? 'Complete Sale with Bags • [Enter]'
+                                    : 'Complete Sale (0 Bags) • [Enter]',
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF10B981),
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                              ),
+                            ),
+                          ] else ...[
+                            ElevatedButton.icon(
+                              onPressed: () {
+                                safePop(_ShoppingBagSelectionResult(hasBags: false));
+                              },
+                              icon: const Icon(Icons.check_circle_outline_rounded, size: 18),
+                              label: const Text('Complete Sale (No Bags) • [Enter]'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppTheme.brandIndigo,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      );
+      return result;
+    } finally {
+      HardwareKeyboard.instance.removeHandler(handleHardwareKey);
+      customPriceController.dispose();
+      customPriceFocus.dispose();
+    }
+  }
 
   static bool _isPosCheckoutProcessing = false;
 
@@ -9431,5 +10324,68 @@ extension _point_of_saleExt on _DashboardScreenState {
         );
       },
     );
+  }
+}
+
+double _posBagPriceSmall = 5.0;
+double _posBagPriceMedium = 10.0;
+double _posBagPriceLarge = 20.0;
+double _posBagPriceCustom = 15.0;
+
+class _ShoppingBagEntry {
+  final String id;
+  final String name;
+  double price;
+  int quantity;
+  final String label;
+  final String shortcutKey;
+  final bool isCustom;
+
+  _ShoppingBagEntry({
+    required this.id,
+    required this.name,
+    required this.price,
+    this.quantity = 0,
+    required this.label,
+    required this.shortcutKey,
+    this.isCustom = false,
+  });
+
+  double get totalPrice => price * quantity;
+}
+
+class _ShoppingBagSelectionResult {
+  final bool hasBags;
+  final List<_ShoppingBagEntry> bags;
+
+  _ShoppingBagSelectionResult({
+    required this.hasBags,
+    this.bags = const [],
+  });
+
+  double get totalCost =>
+      bags.fold(0.0, (sum, b) => sum + (b.price * b.quantity));
+
+  void applyToCart(
+    Map<String, _ProductItem> temporaryCartProducts,
+    Map<String, double> cart,
+  ) {
+    if (!hasBags) return;
+    for (final bag in bags) {
+      if (bag.quantity <= 0) continue;
+      final itemId = 'SV:${bag.id}';
+      temporaryCartProducts[itemId] = _ProductItem(
+        id: itemId,
+        name: bag.name,
+        category: 'Packaging',
+        price: bag.price,
+        costPrice: 0.0,
+        stock: 999999,
+        minStock: 0,
+        productType: 'SERVICE',
+        barcode: 'BAG-${bag.price.toInt()}',
+      );
+      cart[itemId] = (cart[itemId] ?? 0.0) + bag.quantity.toDouble();
+    }
   }
 }

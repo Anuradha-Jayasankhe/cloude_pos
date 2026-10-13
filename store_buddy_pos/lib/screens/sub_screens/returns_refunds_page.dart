@@ -114,78 +114,13 @@ extension _returns_refunds_pageExt on _DashboardScreenState {
     if (item.status == newStatus) return;
     final now = DateTime.now().toIso8601String();
 
-    if (newStatus == 'Approved' && item.status == 'Pending') {
-      if (item.condition == 'Good' && item.productId.isNotEmpty) {
-        final bool isLoose = item.productId.startsWith('LOOSE:');
-        final String baseId =
-            isLoose ? item.productId.substring(6) : item.productId;
-        final idx = _products.indexWhere((p) => p.id == baseId);
-        if (idx >= 0) {
-          final p = _products[idx];
-          final restockQty = isLoose && p.unitConversionRatio > 0
-              ? (item.qty / p.unitConversionRatio)
-              : item.qty;
-          setState(() => p.stock += restockQty);
-          await _enqueueSync('UPDATE', 'products', baseId);
-        }
-      } else if (item.condition != 'Good' && item.condition != '') {
-        final dmg = _DamagedInventoryItem(
-          id: 'DMG-${DateTime.now().millisecondsSinceEpoch}',
-          productId: item.productId,
-          productName: item.productName,
-          qty: item.qty,
-          reason: item.reason,
-          condition: item.condition,
-          returnId: item.id,
-          status: 'QUARANTINE',
-          createdAt: now,
-        );
-        setState(() => _damagedInventory.add(dmg));
-        await _enqueueSync('INSERT', 'damaged_inventory', dmg.id);
-      }
+    final shouldRestock = (newStatus == 'Approved' || newStatus == 'Refunded') && item.status == 'Pending';
+    if (shouldRestock) {
+      await _handleReturnInventoryAndRestock(item);
     }
 
-    if (newStatus == 'Refunded' &&
-        item.amount > 0 &&
-        item.refundMethod != 'NO_PAYOUT' &&
-        !item.cashImpact) {
-      if (item.refundMethod == 'CASH') {
-        final before = _cashInHand;
-        final after = before - item.amount;
-        final tx = _CashTransactionItem(
-          id: 'CTX-${DateTime.now().millisecondsSinceEpoch}',
-          type: 'OUT',
-          referenceType: 'RETURN',
-          referenceId: item.id,
-          amount: item.amount,
-          balanceBefore: before,
-          balanceAfter: after,
-          note: 'Cash refund for ${item.rmaNumber}',
-          createdAt: now,
-        );
-        setState(() {
-          _cashTransactions.add(tx);
-          item.cashImpact = true;
-          item.cashAdjustmentId = tx.id;
-        });
-        await _enqueueSync('INSERT', 'cash_transactions', tx.id);
-      } else if (item.refundMethod == 'BANK' || item.refundMethod == 'CARD') {
-        final tx = _BankTransaction(
-          id: 'BTX-${DateTime.now().millisecondsSinceEpoch}',
-          type: 'MANUAL_WITHDRAW',
-          amount: item.amount,
-          referenceId: item.id,
-          notes: '${item.refundMethod} refund for ${item.rmaNumber}',
-          createdAt: DateTime.now(),
-        );
-        setState(() {
-          _bankTransactions.add(tx);
-          _bankAccountBalance -= item.amount;
-          item.cashImpact = true;
-          item.cashAdjustmentId = tx.id;
-        });
-        await _enqueueSync('INSERT', 'bank_transactions', tx.id);
-      }
+    if (newStatus == 'Refunded') {
+      await _handleReturnCashAndBanking(item);
       _addNotification(
         title: 'Return Refund Completed',
         message:
@@ -194,14 +129,16 @@ extension _returns_refunds_pageExt on _DashboardScreenState {
         targetLocation: _activeLocationForWrites,
         referenceId: item.id,
       );
-      _addNotification(
-        title: 'Return Refund Completed (HQ)',
-        message:
-            'Refund ${_money(item.amount)} issued at ${_activeLocationForWrites} (${item.rmaNumber})',
-        type: 'RETURN_REFUNDED',
-        targetLocation: 'Main Branch',
-        referenceId: item.id,
-      );
+      if (_activeLocationForWrites != 'Main Branch') {
+        _addNotification(
+          title: 'Return Refund Completed (HQ)',
+          message:
+              'Refund ${_money(item.amount)} issued at $_activeLocationForWrites (${item.rmaNumber})',
+          type: 'RETURN_REFUNDED',
+          targetLocation: 'Main Branch',
+          referenceId: item.id,
+        );
+      }
     }
 
     setState(() {
@@ -404,17 +341,6 @@ extension _returns_refunds_pageExt on _DashboardScreenState {
     amountCtrl.dispose();
   }
 
-  double _returnedQtyForSaleItem(String saleId, String productId) {
-    if (saleId.isEmpty || productId.isEmpty) return 0.0;
-    return _returns
-        .where(
-          (r) =>
-              r.saleId == saleId &&
-              r.productId == productId &&
-              r.status != 'Rejected',
-        )
-        .fold<double>(0, (sum, r) => sum + r.qty);
-  }
 
   String _supplierLabelForProductId(String productId) {
     if (productId.isEmpty) return 'N/A';
@@ -515,6 +441,13 @@ extension _returns_refunds_pageExt on _DashboardScreenState {
         );
       }
       await _enqueueSync('UPDATE', 'sales', updatedSaleId!);
+    }
+
+    for (final item in created) {
+      if (item.status == 'Refunded') {
+        await _handleReturnInventoryAndRestock(item);
+        await _handleReturnCashAndBanking(item);
+      }
     }
 
     await _persistWorkspaceData();
@@ -777,10 +710,10 @@ extension _returns_refunds_pageExt on _DashboardScreenState {
               ),
             ),
             const SizedBox(height: 8),
-            const TabBar(
+            TabBar(
               tabs: [
-                Tab(text: 'Returns & Refunds'),
-                Tab(text: 'Damaged / Scrap'),
+                Tab(text: 'Returns & Refunds (${_scopedReturns.length})'),
+                Tab(text: 'Damaged / Scrap (${_scopedDamagedInventory.length})'),
               ],
             ),
             Expanded(
@@ -1486,11 +1419,42 @@ extension _returns_refunds_pageExt on _DashboardScreenState {
     final manualQtyCtrl = TextEditingController(text: '1');
     String refundMethod = 'CASH';
     String condition = 'Good';
+    String returnInitialStatus = 'Refunded'; // Default to immediate refund & restock
     String infoText = preloadedSale != null
-        ? 'Sale ${preloadedSale.id} loaded.'
+        ? 'Sale ${_formatDisplayInvoiceNumber(preloadedSale)} loaded.'
         : '';
     bool manualEntry = preloadedSale != null;
     _SaleRecord? matchedSale = preloadedSale;
+
+    bool matchesSale(_SaleRecord s, String query) {
+      final q = query.trim().toLowerCase();
+      if (q.isEmpty) return false;
+      final displayInv = _formatDisplayInvoiceNumber(s).toLowerCase();
+      final rawInv = s.invoiceNumber.toLowerCase();
+      final id = s.id.toLowerCase();
+      final custName = s.customerName.toLowerCase();
+      final custPhone = s.customerPhone.toLowerCase();
+
+      if (displayInv.contains(q) ||
+          rawInv.contains(q) ||
+          id.contains(q) ||
+          custName.contains(q) ||
+          custPhone.contains(q)) {
+        return true;
+      }
+      final cleanQ = q.replaceAll(RegExp(r'[^a-z0-9]'), '');
+      if (cleanQ.isNotEmpty) {
+        final cleanDisplay = displayInv.replaceAll(RegExp(r'[^a-z0-9]'), '');
+        final cleanRaw = rawInv.replaceAll(RegExp(r'[^a-z0-9]'), '');
+        final cleanId = id.replaceAll(RegExp(r'[^a-z0-9]'), '');
+        if (cleanDisplay.contains(cleanQ) ||
+            cleanRaw.contains(cleanQ) ||
+            cleanId.contains(cleanQ)) {
+          return true;
+        }
+      }
+      return false;
+    }
 
     final selectedProductIds = <String, bool>{};
     final returnQuantities = <String, double>{};
@@ -1704,7 +1668,7 @@ extension _returns_refunds_pageExt on _DashboardScreenState {
                                     taxAmount: lineTax,
                                     condition: condition,
                                     refundMethod: isUnpaidCod ? 'NO_PAYOUT' : refundMethod,
-                                    status: 'Pending',
+                                    status: returnInitialStatus,
                                     createdAt: now.toIso8601String(),
                                   ),
                                 );
@@ -1754,7 +1718,7 @@ extension _returns_refunds_pageExt on _DashboardScreenState {
                                 qty: manualQty,
                                 condition: condition,
                                 refundMethod: refundMethod,
-                                status: 'Pending',
+                                status: returnInitialStatus,
                                 createdAt: now.toIso8601String(),
                               ),
                             ]);
@@ -1801,13 +1765,14 @@ extension _returns_refunds_pageExt on _DashboardScreenState {
                       ),
                     ),
                     const SizedBox(height: 10),
+                    // Invoice Search Field with Real-time Auto-Suggestions
                     Row(
                       children: [
                         Expanded(
                           child: TextField(
                             controller: saleCtrl,
                             decoration: InputDecoration(
-                              hintText: 'Receipt/Invoice number or customer name...',
+                              hintText: 'Type any invoice number (e.g. 0001, INV...), customer name or phone...',
                               prefixIcon: const Icon(Icons.search),
                               suffixIcon: saleCtrl.text.isNotEmpty
                                   ? IconButton(
@@ -1831,21 +1796,22 @@ extension _returns_refunds_pageExt on _DashboardScreenState {
                                 vertical: 12,
                               ),
                             ),
+                            onChanged: (_) {
+                              setLocal(() {});
+                            },
                             onSubmitted: (term) {
                               final sq = term.trim().toLowerCase();
                               if (sq.isEmpty) return;
                               final sale = _scopedSales
                                   .cast<_SaleRecord?>()
                                   .firstWhere(
-                                    (r) =>
-                                        r!.id.toLowerCase().contains(sq) ||
-                                        r.customerName.toLowerCase().contains(sq),
+                                    (r) => r != null && matchesSale(r, sq),
                                     orElse: () => null,
                                   );
                               if (sale != null) {
                                 setLocal(() {
                                   initSale(sale);
-                                  infoText = 'Sale ${sale.id} loaded.';
+                                  infoText = 'Invoice ${_formatDisplayInvoiceNumber(sale)} loaded.';
                                 });
                               } else {
                                 setLocal(() {
@@ -1856,7 +1822,7 @@ extension _returns_refunds_pageExt on _DashboardScreenState {
                           ),
                         ),
                         const SizedBox(width: 8),
-                        ElevatedButton(
+                        ElevatedButton.icon(
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF6366F1),
                             foregroundColor: Colors.white,
@@ -1864,28 +1830,26 @@ extension _returns_refunds_pageExt on _DashboardScreenState {
                               borderRadius: BorderRadius.circular(UiRadius.md),
                             ),
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 20,
-                              vertical: 16,
+                              horizontal: 18,
+                              vertical: 14,
                             ),
                           ),
                           onPressed: () {
                             final sq = saleCtrl.text.trim().toLowerCase();
                             if (sq.isEmpty) {
-                              setLocal(() => infoText = 'Enter invoice number to search.');
+                              setLocal(() => infoText = 'Enter invoice number or customer name to search.');
                               return;
                             }
                             final sale = _scopedSales
                                 .cast<_SaleRecord?>()
                                 .firstWhere(
-                                  (r) =>
-                                      r!.id.toLowerCase().contains(sq) ||
-                                      r.customerName.toLowerCase().contains(sq),
+                                  (r) => r != null && matchesSale(r, sq),
                                   orElse: () => null,
                                 );
                             if (sale != null) {
                               setLocal(() {
                                 initSale(sale);
-                                infoText = 'Sale ${sale.id} loaded.';
+                                infoText = 'Invoice ${_formatDisplayInvoiceNumber(sale)} loaded.';
                               });
                             } else {
                               setLocal(() {
@@ -1893,10 +1857,244 @@ extension _returns_refunds_pageExt on _DashboardScreenState {
                               });
                             }
                           },
-                          child: const Text('Search'),
+                          icon: const Icon(Icons.search, size: 16),
+                          label: const Text('Search'),
                         ),
                       ],
                     ),
+
+                    // Loaded Sale Confirmation Card
+                    if (matchedSale != null) ...[
+                      const SizedBox(height: 10),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF10B981).withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.4)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.check_circle_rounded, color: Color(0xFF10B981), size: 24),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Text(
+                                        'Invoice: ${_formatDisplayInvoiceNumber(matchedSale!)}',
+                                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13.5, color: Color(0xFF10B981)),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: Colors.blue.withValues(alpha: 0.15),
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
+                                        child: Text(
+                                          matchedSale!.paymentMethod,
+                                          style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.bold, color: Colors.blue),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    'Customer: ${matchedSale!.customerName.isEmpty ? "Walk-in" : matchedSale!.customerName}  •  Paid: ${_money(matchedSale!.amountPaid)}  •  Items: ${matchedSale!.items.length}',
+                                    style: TextStyle(fontSize: 11.5, color: isDark ? Colors.grey.shade300 : const Color(0xFF334155)),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            TextButton.icon(
+                              onPressed: () => setLocal(() {
+                                matchedSale = null;
+                                saleCtrl.clear();
+                                selectedProductIds.clear();
+                                returnQuantities.clear();
+                                infoText = '';
+                              }),
+                              icon: const Icon(Icons.refresh, size: 16),
+                              label: const Text('Change Invoice'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+
+                    // Real-time Auto-Suggestions List when user is typing
+                    if (matchedSale == null && saleCtrl.text.trim().isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      () {
+                        final suggestions = _scopedSales
+                            .where((s) => matchesSale(s, saleCtrl.text))
+                            .take(6)
+                            .toList();
+
+                        if (suggestions.isEmpty) {
+                          return Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0)),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.info_outline, size: 18, color: Colors.amber),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'No invoice found matching "${saleCtrl.text}". Try typing a number from the invoice (e.g. 0001, 12) or customer name.',
+                                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        }
+
+                        return Container(
+                          constraints: const BoxConstraints(maxHeight: 260),
+                          decoration: BoxDecoration(
+                            color: isDark ? const Color(0xFF1E293B) : Colors.white,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: const Color(0xFF6366F1).withValues(alpha: 0.4), width: 1.5),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.08),
+                                blurRadius: 8,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF6366F1).withValues(alpha: 0.1),
+                                  borderRadius: const BorderRadius.only(topLeft: Radius.circular(8), topRight: Radius.circular(8)),
+                                ),
+                                child: Row(
+                                  children: [
+                                    const Icon(Icons.auto_awesome_rounded, size: 14, color: Color(0xFF6366F1)),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      'Matching Invoices (${suggestions.length} found - click to load):',
+                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 11.5, color: Color(0xFF6366F1)),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              Flexible(
+                                child: ListView.separated(
+                                  shrinkWrap: true,
+                                  padding: EdgeInsets.zero,
+                                  itemCount: suggestions.length,
+                                  separatorBuilder: (_, __) => const Divider(height: 1),
+                                  itemBuilder: (context, i) {
+                                    final s = suggestions[i];
+                                    final invNo = _formatDisplayInvoiceNumber(s);
+                                    final dateText = _formatDate(s.createdAt.toLocal());
+                                    final itemsSummary = s.items.map((it) => it.productName).take(2).join(', ');
+
+                                    return InkWell(
+                                      onTap: () {
+                                        setLocal(() {
+                                          initSale(s);
+                                          saleCtrl.text = invNo;
+                                          infoText = 'Invoice $invNo loaded.';
+                                        });
+                                      },
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                                        child: Row(
+                                          children: [
+                                            CircleAvatar(
+                                              radius: 16,
+                                              backgroundColor: const Color(0xFF6366F1).withValues(alpha: 0.12),
+                                              child: const Icon(Icons.receipt_long, size: 16, color: Color(0xFF6366F1)),
+                                            ),
+                                            const SizedBox(width: 10),
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  Row(
+                                                    children: [
+                                                      Text(
+                                                        invNo,
+                                                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                                      ),
+                                                      const SizedBox(width: 6),
+                                                      Container(
+                                                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                                                        decoration: BoxDecoration(
+                                                          color: Colors.green.withValues(alpha: 0.15),
+                                                          borderRadius: BorderRadius.circular(4),
+                                                        ),
+                                                        child: Text(
+                                                          s.status,
+                                                          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.green),
+                                                        ),
+                                                      ),
+                                                      const SizedBox(width: 6),
+                                                      Text(
+                                                        s.paymentMethod,
+                                                        style: const TextStyle(fontSize: 11, color: Colors.grey),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                  const SizedBox(height: 2),
+                                                  Text(
+                                                    'Customer: ${s.customerName.isEmpty ? "Walk-in" : s.customerName}  •  Date: $dateText  •  Total: ${_money(s.total)}',
+                                                    style: TextStyle(fontSize: 11, color: isDark ? Colors.grey.shade400 : Colors.grey.shade600),
+                                                  ),
+                                                  if (itemsSummary.isNotEmpty)
+                                                    Text(
+                                                      'Items: $itemsSummary${s.items.length > 2 ? " + ${s.items.length - 2} more" : ""}',
+                                                      style: const TextStyle(fontSize: 10.5, color: Colors.grey),
+                                                    ),
+                                                ],
+                                              ),
+                                            ),
+                                            ElevatedButton(
+                                              onPressed: () {
+                                                setLocal(() {
+                                                  initSale(s);
+                                                  saleCtrl.text = invNo;
+                                                  infoText = 'Invoice $invNo loaded.';
+                                                });
+                                              },
+                                              style: ElevatedButton.styleFrom(
+                                                backgroundColor: const Color(0xFF6366F1),
+                                                foregroundColor: Colors.white,
+                                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                                minimumSize: const Size(60, 30),
+                                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                                              ),
+                                              child: const Text('Select', style: TextStyle(fontSize: 11.5)),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }(),
+                    ],
+
                     const SizedBox(height: 8),
                     Row(
                       children: [

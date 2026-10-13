@@ -498,27 +498,7 @@ extension _sales_pageExt on _DashboardScreenState {
     final query = _salesSearchController.text.trim().toLowerCase();
     final periodFiltered = _scopedSales.where((sale) {
       if (_salesTimeFilter == 'All Time') return true;
-      final day = DateTime(
-        sale.createdAt.year,
-        sale.createdAt.month,
-        sale.createdAt.day,
-      );
-      final now = DateTime.now();
-      final today = DateTime(now.year, now.month, now.day);
-      if (_salesTimeFilter == 'Today') {
-        return day.isAtSameMomentAs(today);
-      }
-      if (_salesTimeFilter == 'This Week') {
-        final startOfWeek = today.subtract(Duration(days: today.weekday - 1));
-        return !day.isBefore(startOfWeek);
-      }
-      if (_salesTimeFilter == 'This Month') {
-        return day.year == today.year && day.month == today.month;
-      }
-      if (_salesTimeFilter == 'This Year') {
-        return day.year == today.year;
-      }
-      return true;
+      return _matchesTimeFilter(sale.createdAt, _salesTimeFilter);
     }).toList();
 
     final cashierUsers = _scopedUsers
@@ -775,17 +755,60 @@ extension _sales_pageExt on _DashboardScreenState {
       return true;
     }).toList();
 
-    final totalRevenue = filtered.fold<double>(0, (sum, s) => sum + s.total);
-    final productRevenue = filtered.fold<double>(
+    // Realized sales exclude cancelled orders and pending/unpaid COD orders (matching Dashboard & Reports)
+    final realizedFiltered = filtered.where((s) {
+      final st = s.status.toUpperCase();
+      if (st == 'CANCELLED' ||
+          st == 'COD_PENDING' ||
+          st == 'PENDING' ||
+          st == 'OUT_FOR_DELIVERY' ||
+          st == 'DELIVERED_TO_CUSTOMER') return false;
+      if (s.paymentMethod.toUpperCase() == 'COD' && st != 'COMPLETED') return false;
+      if ((st == 'RETURNED' || st == 'PARTIALLY_RETURNED') &&
+          s.paymentMethod.toUpperCase() == 'COD' &&
+          s.amountPaid <= 0) {
+        return false;
+      }
+      return true;
+    }).toList();
+
+    final filteredSaleIds = filtered.map((s) => s.id).toSet();
+    final periodRefunds = _scopedReturns.where((r) {
+      if (r.status == 'Rejected') return false;
+      if (r.refundMethod == 'NO_PAYOUT' || r.amount <= 0) return false;
+      final rDate = DateTime.tryParse(r.createdAt) ?? DateTime.now();
+      if (!_matchesTimeFilter(rDate, _salesTimeFilter)) return false;
+      return r.saleId.isEmpty || filteredSaleIds.contains(r.saleId);
+    }).fold<double>(0.0, (sum, r) => sum + r.amount);
+
+    final totalRevenue = (realizedFiltered.fold<double>(0, (sum, s) => sum + s.total) - periodRefunds).clamp(0.0, double.infinity);
+
+    final realizedSaleIds = realizedFiltered.map((s) => s.id).toSet();
+    final orphanPeriodProductRefunds = _scopedReturns.where((r) {
+      if (r.status == 'Rejected' || r.refundMethod == 'NO_PAYOUT' || r.amount <= 0) return false;
+      final rDate = DateTime.tryParse(r.createdAt) ?? DateTime.now();
+      if (!_matchesTimeFilter(rDate, _salesTimeFilter)) return false;
+      return (r.saleId.isEmpty || !realizedSaleIds.contains(r.saleId)) && !_isReturnForService(r);
+    }).fold<double>(0.0, (sum, r) => sum + r.amount);
+
+    final productRevenue = (realizedFiltered.fold<double>(
       0,
       (sum, s) => sum + _saleProductRevenue(s),
-    );
-    final serviceRevenue = filtered.fold<double>(
+    ) - orphanPeriodProductRefunds).clamp(0.0, double.infinity);
+
+    final orphanPeriodServiceRefunds = _scopedReturns.where((r) {
+      if (r.status == 'Rejected' || r.refundMethod == 'NO_PAYOUT' || r.amount <= 0) return false;
+      final rDate = DateTime.tryParse(r.createdAt) ?? DateTime.now();
+      if (!_matchesTimeFilter(rDate, _salesTimeFilter)) return false;
+      return (r.saleId.isEmpty || !realizedSaleIds.contains(r.saleId)) && _isReturnForService(r);
+    }).fold<double>(0.0, (sum, r) => sum + r.amount);
+
+    final serviceRevenue = (realizedFiltered.fold<double>(
       0,
       (sum, s) => sum + _saleServiceRevenue(s),
-    );
-    final avgOrder = filtered.isEmpty ? 0.0 : totalRevenue / filtered.length;
-    final itemCount = filtered.length;
+    ) - orphanPeriodServiceRefunds).clamp(0.0, double.infinity);
+    final avgOrder = realizedFiltered.isEmpty ? 0.0 : totalRevenue / realizedFiltered.length;
+    final itemCount = realizedFiltered.length;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     Widget customerActionButton({
@@ -959,7 +982,7 @@ extension _sales_pageExt on _DashboardScreenState {
                     children: [
                       _salesSummaryCard(
                         'Total Sales',
-                        '${filtered.length}',
+                        '${realizedFiltered.length}',
                         icon: Icons.point_of_sale_rounded,
                         accent: UiGradients.brand,
                       ),
@@ -974,7 +997,7 @@ extension _sales_pageExt on _DashboardScreenState {
                       _salesSummaryCard(
                         'Product Revenue',
                         _money(productRevenue),
-                        subtitle: '$itemCount items sold',
+                        subtitle: '$itemCount orders completed',
                         icon: Icons.inventory_2_rounded,
                         accent: UiGradients.teal,
                       ),
@@ -2746,6 +2769,13 @@ extension _sales_pageExt on _DashboardScreenState {
           );
         }
         await _enqueueSync('UPDATE', 'sales', targetSale.id);
+      }
+    }
+
+    for (final item in created) {
+      if (item.status == 'Refunded') {
+        await _handleReturnInventoryAndRestock(item);
+        await _handleReturnCashAndBanking(item);
       }
     }
 

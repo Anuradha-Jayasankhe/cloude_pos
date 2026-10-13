@@ -28,7 +28,7 @@ extension _dashboard_pageExt on _DashboardScreenState {
       }
       return true;
     }).toList();
-    final totalRefundedReturns = _returns.where((r) {
+    final totalRefundedReturns = _scopedReturns.where((r) {
       if (r.status == 'Rejected') return false;
       if (r.refundMethod == 'NO_PAYOUT' || r.amount <= 0) return false;
       final rDate = DateTime.tryParse(r.createdAt) ?? DateTime.now();
@@ -97,22 +97,43 @@ extension _dashboard_pageExt on _DashboardScreenState {
           .fold<double>(0.0, (sum, x) => sum + x.amount);
     }
     final inventoryValue = _inventoryValue();
-    final productRevenue = validPeriodSales.fold<double>(
+    final validPeriodSaleIds = validPeriodSales.map((s) => s.id).toSet();
+    final orphanPeriodProductRefunds = _scopedReturns.where((r) {
+      if (r.status == 'Rejected' || r.refundMethod == 'NO_PAYOUT' || r.amount <= 0) return false;
+      final rDate = DateTime.tryParse(r.createdAt) ?? DateTime.now();
+      if (!_matchesTimeFilter(rDate, _dashboardPeriod)) return false;
+      return (r.saleId.isEmpty || !validPeriodSaleIds.contains(r.saleId)) && !_isReturnForService(r);
+    }).fold<double>(0.0, (sum, r) => sum + r.amount);
+
+    final rawProductRevenue = validPeriodSales.fold<double>(
       0,
       (sum, s) => sum + _saleProductRevenue(s),
     );
-    final serviceRevenue = validPeriodSales.fold<double>(
+    final productRevenue = (rawProductRevenue - orphanPeriodProductRefunds).clamp(0.0, double.infinity);
+
+    final orphanPeriodServiceRefunds = _scopedReturns.where((r) {
+      if (r.status == 'Rejected' || r.refundMethod == 'NO_PAYOUT' || r.amount <= 0) return false;
+      final rDate = DateTime.tryParse(r.createdAt) ?? DateTime.now();
+      if (!_matchesTimeFilter(rDate, _dashboardPeriod)) return false;
+      return (r.saleId.isEmpty || !validPeriodSaleIds.contains(r.saleId)) && _isReturnForService(r);
+    }).fold<double>(0.0, (sum, r) => sum + r.amount);
+
+    final rawServiceRevenue = validPeriodSales.fold<double>(
       0,
       (sum, s) => sum + _saleServiceRevenue(s),
     );
+    final serviceRevenue = (rawServiceRevenue - orphanPeriodServiceRefunds).clamp(0.0, double.infinity);
     double _periodTotalCost = 0.0;
     for (final sale in validPeriodSales) {
       for (final item in sale.items) {
+        final returnedQty = _returnedQtyForSaleItem(sale.id, item.productId);
+        final netQty = (item.quantity - returnedQty).clamp(0.0, double.infinity);
+        if (netQty <= 0) continue;
         final prodIdx = _products.indexWhere((p) => p.id == item.productId);
         final unitCost = prodIdx >= 0
             ? _unitInventoryCost(_products[prodIdx])
             : 0.0;
-        _periodTotalCost += unitCost * item.quantity;
+        _periodTotalCost += unitCost * netQty;
       }
     }
     final _periodTotalProfit = (totalRevenue - _periodTotalCost).clamp(
@@ -1204,18 +1225,36 @@ extension _dashboard_pageExt on _DashboardScreenState {
       }
     }).toList();
     final periodSales = _salesForPeriod(_dashboardPeriod, cashierSales);
-    final totalRevenue = periodSales.fold<double>(0, (sum, s) => sum + s.total);
+    final periodReturns = _scopedReturns.where((r) {
+      if (r.status == 'Rejected' || r.refundMethod == 'NO_PAYOUT' || r.amount <= 0) return false;
+      final rDate = DateTime.tryParse(r.createdAt) ?? DateTime.now();
+      return _matchesTimeFilter(rDate, _dashboardPeriod);
+    }).fold<double>(0.0, (sum, r) => sum + r.amount);
+    final totalRevenue = (periodSales.fold<double>(0, (sum, s) => sum + s.total) - periodReturns).clamp(0.0, double.infinity);
     final avgOrder = periodSales.isEmpty
         ? 0.0
         : totalRevenue / periodSales.length;
-    final productRevenue = periodSales.fold<double>(
+    final periodSaleIds = periodSales.map((s) => s.id).toSet();
+    final orphanPeriodProductRefunds = _scopedReturns.where((r) {
+      if (r.status == 'Rejected' || r.refundMethod == 'NO_PAYOUT' || r.amount <= 0) return false;
+      final rDate = DateTime.tryParse(r.createdAt) ?? DateTime.now();
+      if (!_matchesTimeFilter(rDate, _dashboardPeriod)) return false;
+      return (r.saleId.isEmpty || !periodSaleIds.contains(r.saleId)) && !_isReturnForService(r);
+    }).fold<double>(0.0, (sum, r) => sum + r.amount);
+    final productRevenue = (periodSales.fold<double>(
       0,
       (sum, s) => sum + _saleProductRevenue(s),
-    );
-    final serviceRevenue = periodSales.fold<double>(
+    ) - orphanPeriodProductRefunds).clamp(0.0, double.infinity);
+    final orphanPeriodServiceRefunds = _scopedReturns.where((r) {
+      if (r.status == 'Rejected' || r.refundMethod == 'NO_PAYOUT' || r.amount <= 0) return false;
+      final rDate = DateTime.tryParse(r.createdAt) ?? DateTime.now();
+      if (!_matchesTimeFilter(rDate, _dashboardPeriod)) return false;
+      return (r.saleId.isEmpty || !periodSaleIds.contains(r.saleId)) && _isReturnForService(r);
+    }).fold<double>(0.0, (sum, r) => sum + r.amount);
+    final serviceRevenue = (periodSales.fold<double>(
       0,
       (sum, s) => sum + _saleServiceRevenue(s),
-    );
+    ) - orphanPeriodServiceRefunds).clamp(0.0, double.infinity);
     return SingleChildScrollView(
       padding: const EdgeInsets.all(22),
       child: Column(
@@ -4399,7 +4438,7 @@ extension _dashboard_pageExt on _DashboardScreenState {
       return true;
     }).toList();
 
-    final totalRefundedReturns = _returns.where((r) {
+    final totalRefundedReturns = _scopedReturns.where((r) {
       if (r.status == 'Rejected') return false;
       if (r.refundMethod == 'NO_PAYOUT' || r.amount <= 0) return false;
       final rDate = DateTime.tryParse(r.createdAt) ?? DateTime.now();
@@ -4412,24 +4451,43 @@ extension _dashboard_pageExt on _DashboardScreenState {
       (sum, s) => sum + s.total,
     ) - totalRefundedReturns).clamp(0.0, double.infinity);
 
-    final productRevenue = validPeriodSales.fold<double>(
+    final validPeriodSaleIds = validPeriodSales.map((s) => s.id).toSet();
+    final orphanPeriodProductRefunds = _scopedReturns.where((r) {
+      if (r.status == 'Rejected' || r.refundMethod == 'NO_PAYOUT' || r.amount <= 0) return false;
+      final rDate = DateTime.tryParse(r.createdAt) ?? DateTime.now();
+      if (!_matchesTimeFilter(rDate, _dashboardPeriod)) return false;
+      return (r.saleId.isEmpty || !validPeriodSaleIds.contains(r.saleId)) && !_isReturnForService(r);
+    }).fold<double>(0.0, (sum, r) => sum + r.amount);
+
+    final productRevenue = (validPeriodSales.fold<double>(
       0.0,
       (sum, s) => sum + _saleProductRevenue(s),
-    );
-    final serviceRevenue = validPeriodSales.fold<double>(
+    ) - orphanPeriodProductRefunds).clamp(0.0, double.infinity);
+
+    final orphanPeriodServiceRefunds = _scopedReturns.where((r) {
+      if (r.status == 'Rejected' || r.refundMethod == 'NO_PAYOUT' || r.amount <= 0) return false;
+      final rDate = DateTime.tryParse(r.createdAt) ?? DateTime.now();
+      if (!_matchesTimeFilter(rDate, _dashboardPeriod)) return false;
+      return (r.saleId.isEmpty || !validPeriodSaleIds.contains(r.saleId)) && _isReturnForService(r);
+    }).fold<double>(0.0, (sum, r) => sum + r.amount);
+
+    final serviceRevenue = (validPeriodSales.fold<double>(
       0.0,
       (sum, s) => sum + _saleServiceRevenue(s),
-    );
+    ) - orphanPeriodServiceRefunds).clamp(0.0, double.infinity);
 
     // Calculate cost and profit
     double totalCost = 0.0;
     for (final sale in validPeriodSales) {
       for (final item in sale.items) {
+        final returnedQty = _returnedQtyForSaleItem(sale.id, item.productId);
+        final netQty = (item.quantity - returnedQty).clamp(0.0, double.infinity);
+        if (netQty <= 0) continue;
         final prodIdx = _products.indexWhere((p) => p.id == item.productId);
         final unitCost = prodIdx >= 0
             ? _unitInventoryCost(_products[prodIdx])
             : 0.0;
-        totalCost += unitCost * item.quantity;
+        totalCost += unitCost * netQty;
       }
     }
     final totalProfit = (totalRevenue - totalCost).clamp(0.0, double.infinity);

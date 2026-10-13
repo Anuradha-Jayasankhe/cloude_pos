@@ -581,6 +581,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   bool _enableAgentCommission = false;
   bool _mobileReloadEnabled = false;
   bool _enableMobileShopFeatures = false;
+  bool _enableShoppingBagCharges = true;
 
   // Device-Local Hardware Printer Configuration (Terminal-specific, NOT synced across branches)
   String? _localReceiptPrinterName;
@@ -662,7 +663,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String _reportsInventorySupplierFilter = 'All Suppliers';
   String _salesCustomerFilter = 'All Customers';
   String _salesItemsFilter = 'All Items';
-  String _salesTimeFilter = 'All Time';
+  String _salesTimeFilter = 'This Month';
   String _reportsTimeFilter = 'This Month';
   String _reportsPaymentFilter = 'ALL';
   String _reportsStatusFilter = 'ALL';
@@ -3793,22 +3794,180 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return sale.items.any(_isServiceSaleItem);
   }
 
+  double _returnedQtyForSaleItem(String saleId, String productId) {
+    if (saleId.isEmpty || productId.isEmpty) return 0.0;
+    return _returns
+        .where(
+          (r) =>
+              r.saleId == saleId &&
+              r.productId == productId &&
+              r.status != 'Rejected',
+        )
+        .fold<double>(0, (sum, r) => sum + r.qty);
+  }
+
+  bool _isReturnForService(_ReturnItem r) {
+    if (r.productId.startsWith('SV:')) return true;
+    for (final p in _products) {
+      if (p.id == r.productId) {
+        if (p.productType.trim().toUpperCase() == 'SERVICE' ||
+            p.category.trim().toLowerCase() == 'service') {
+          return true;
+        }
+        return false;
+      }
+    }
+    if (r.saleId.isNotEmpty) {
+      for (final s in _sales) {
+        if (s.id == r.saleId) {
+          if (s.paymentMethod.toUpperCase() == 'SERVICE') return true;
+          if (s.items.isNotEmpty && s.items.every(_isServiceSaleItem)) return true;
+          break;
+        }
+      }
+    }
+    return false;
+  }
+
   double _saleServiceRevenue(_SaleRecord sale) {
     if (sale.items.isEmpty) {
-      return sale.paymentMethod.toUpperCase() == 'SERVICE' ? sale.total : 0;
+      if (sale.paymentMethod.toUpperCase() != 'SERVICE') return 0;
+      final saleRefunds = _scopedReturns.where((r) {
+        if (r.status == 'Rejected' || r.refundMethod == 'NO_PAYOUT' || r.amount <= 0) return false;
+        return r.saleId == sale.id && _isReturnForService(r);
+      }).fold<double>(0.0, (sum, r) => sum + r.amount);
+      return (sale.total - saleRefunds).clamp(0.0, double.infinity);
     }
-    return sale.items
-        .where(_isServiceSaleItem)
-        .fold<double>(0, (sum, item) => sum + item.lineTotal);
+    double total = 0.0;
+    for (final item in sale.items) {
+      if (!_isServiceSaleItem(item)) continue;
+      final returnedQty = _returnedQtyForSaleItem(sale.id, item.productId);
+      final netQty = (item.quantity - returnedQty).clamp(0.0, double.infinity);
+      if (netQty <= 0) continue;
+      final lineNet = item.quantity > 0 ? (item.lineTotal / item.quantity) * netQty : 0.0;
+      total += lineNet;
+    }
+    return total;
   }
 
   double _saleProductRevenue(_SaleRecord sale) {
     if (sale.items.isEmpty) {
-      return sale.paymentMethod.toUpperCase() == 'SERVICE' ? 0 : sale.total;
+      if (sale.paymentMethod.toUpperCase() == 'SERVICE') return 0;
+      final saleRefunds = _scopedReturns.where((r) {
+        if (r.status == 'Rejected' || r.refundMethod == 'NO_PAYOUT' || r.amount <= 0) return false;
+        return r.saleId == sale.id && !_isReturnForService(r);
+      }).fold<double>(0.0, (sum, r) => sum + r.amount);
+      return (sale.total - saleRefunds).clamp(0.0, double.infinity);
     }
-    return sale.items
-        .where((item) => !_isServiceSaleItem(item))
-        .fold<double>(0, (sum, item) => sum + item.lineTotal);
+    double total = 0.0;
+    for (final item in sale.items) {
+      if (_isServiceSaleItem(item)) continue;
+      final returnedQty = _returnedQtyForSaleItem(sale.id, item.productId);
+      final netQty = (item.quantity - returnedQty).clamp(0.0, double.infinity);
+      if (netQty <= 0) continue;
+      final lineNet = item.quantity > 0 ? (item.lineTotal / item.quantity) * netQty : 0.0;
+      total += lineNet;
+    }
+    final unallocatedRefunds = _scopedReturns.where((r) {
+      if (r.status == 'Rejected' || r.refundMethod == 'NO_PAYOUT' || r.amount <= 0) return false;
+      return r.saleId == sale.id && r.productId.isEmpty && !_isReturnForService(r);
+    }).fold<double>(0.0, (sum, r) => sum + r.amount);
+    return (total - unallocatedRefunds).clamp(0.0, double.infinity);
+  }
+
+  Future<void> _handleReturnInventoryAndRestock(_ReturnItem item) async {
+    final now = DateTime.now().toIso8601String();
+    final bool isLoose = item.productId.startsWith('LOOSE:');
+    final String baseId = isLoose ? item.productId.substring(6) : item.productId;
+
+    if (item.condition == 'Good' && item.productId.isNotEmpty) {
+      final idx = _products.indexWhere((p) => p.id == baseId);
+      if (idx >= 0) {
+        final p = _products[idx];
+        final restockQty = isLoose && p.unitConversionRatio > 0
+            ? (item.qty / p.unitConversionRatio)
+            : item.qty;
+        setState(() => p.stock += restockQty);
+        if (_productRepository != null) {
+          try {
+            await _productRepository!.updateProduct(_toDomainProduct(p));
+          } catch (e) {
+            debugPrint('Failed to update product repository on restock: $e');
+          }
+        }
+        await _enqueueSync('UPDATE', 'products', baseId);
+      }
+    } else if (item.condition != 'Good' && item.condition.isNotEmpty) {
+      final alreadyDamaged = _damagedInventory.any(
+        (d) =>
+            (d.returnId == item.rmaNumber || d.returnId == item.id) &&
+            (d.productId == baseId || d.productId == item.productId),
+      );
+      if (!alreadyDamaged) {
+        String pName = item.productName;
+        if (pName.isEmpty) {
+          final idx = _products.indexWhere((p) => p.id == baseId);
+          if (idx >= 0) pName = _products[idx].name;
+        }
+        final dmg = _DamagedInventoryItem(
+          id: 'DMG-${DateTime.now().millisecondsSinceEpoch}-${_damagedInventory.length}',
+          productId: baseId.isNotEmpty ? baseId : item.productId,
+          productName: pName.isNotEmpty ? pName : 'Returned Product',
+          qty: item.qty,
+          reason: item.reason.isNotEmpty
+              ? item.reason
+              : 'Customer Return (${item.condition})',
+          condition: item.condition,
+          returnId: item.rmaNumber.isNotEmpty ? item.rmaNumber : item.id,
+          status: 'QUARANTINE',
+          createdAt: now,
+        );
+        setState(() => _damagedInventory.insert(0, dmg));
+        await _enqueueSync('INSERT', 'damaged_inventory', dmg.id);
+      }
+    }
+  }
+
+  Future<void> _handleReturnCashAndBanking(_ReturnItem item) async {
+    if (item.status != 'Refunded' ||
+        item.amount <= 0 ||
+        item.refundMethod == 'NO_PAYOUT' ||
+        item.cashImpact) {
+      return;
+    }
+    if (item.refundMethod == 'CASH') {
+      final before = _cashInHand;
+      final after = before - item.amount;
+      final tx = _CashTransactionItem(
+        id: 'CTX-${DateTime.now().millisecondsSinceEpoch}-${_cashTransactions.length}',
+        type: 'OUT',
+        referenceType: 'RETURN',
+        referenceId: item.id,
+        amount: item.amount,
+        balanceBefore: before,
+        balanceAfter: after,
+        note: 'Cash refund for ${item.rmaNumber}',
+        createdAt: DateTime.now().toIso8601String(),
+      );
+      _cashTransactions.add(tx);
+      item.cashImpact = true;
+      item.cashAdjustmentId = tx.id;
+      await _enqueueSync('INSERT', 'cash_transactions', tx.id);
+    } else if (item.refundMethod == 'BANK' || item.refundMethod == 'CARD') {
+      final tx = _BankTransaction(
+        id: 'BTX-${DateTime.now().millisecondsSinceEpoch}',
+        type: 'MANUAL_WITHDRAW',
+        amount: item.amount,
+        referenceId: item.id,
+        notes: '${item.refundMethod} refund for ${item.rmaNumber}',
+        createdAt: DateTime.now(),
+      );
+      _bankTransactions.add(tx);
+      _bankAccountBalance -= item.amount;
+      item.cashImpact = true;
+      item.cashAdjustmentId = tx.id;
+      await _enqueueSync('INSERT', 'bank_transactions', tx.id);
+    }
   }
 
   List<DateTime> _generateInstallmentDueDates({
@@ -7527,6 +7686,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         'enableAgentCommission': _enableAgentCommission,
         'mobileReloadEnabled': _mobileReloadEnabled,
         'enableMobileShopFeatures': _enableMobileShopFeatures,
+        'enableShoppingBagCharges': _enableShoppingBagCharges,
         'operatorCommissions': _operatorCommissions,
         'agentCommissionLockToLogin': _agentCommissionLockToLogin,
         'notifyEmail': _notifyEmail,
@@ -8122,6 +8282,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
             settings['mobileReloadEnabled'] ?? _mobileReloadEnabled;
         _enableMobileShopFeatures =
             settings['enableMobileShopFeatures'] ?? _enableMobileShopFeatures;
+        _enableShoppingBagCharges =
+            settings['enableShoppingBagCharges'] ?? _enableShoppingBagCharges;
         if (settings['operatorCommissions'] != null) {
           final rawCommissions = Map<String, dynamic>.from(
             settings['operatorCommissions'],
@@ -8416,259 +8578,388 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ? settings.deliveryNotePrinterName!
         : (settings.printerName?.isNotEmpty == true ? settings.printerName! : 'Counter Receipt Printer');
     String selectedFormat = settings.deliveryNoteFormat;
+    final formats = const [
+      'THERMAL_80MM',
+      'THERMAL_72MM',
+      'THERMAL_58MM',
+      'A4',
+      'A5',
+    ];
+    if (!formats.contains(selectedFormat)) {
+      selectedFormat = 'THERMAL_80MM';
+    }
 
-    await showDialog(
-      context: context,
-      builder: (dialogCtx) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          final isDark = Theme.of(context).brightness == Brightness.dark;
-          final primaryColor = Theme.of(context).primaryColor;
+    bool dialogOpen = true;
+    StateSetter? dialogStateSetter;
+    BuildContext? activeDialogCtx;
 
-          return AlertDialog(
-            title: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(Icons.local_shipping_rounded, color: Colors.blue),
+    Future<void> executePrintNow(BuildContext ctx) async {
+      if (!dialogOpen) return;
+      dialogOpen = false;
+      Navigator.pop(ctx);
+      await PrintService.printDeliveryNote(
+        sale: domainSale,
+        settings: settings,
+        currencySymbol: currencySymbol,
+        storeName: _companyName,
+        storeAddress: storeAddress,
+        storePhone: _companyPhone,
+        formatOverride: selectedFormat,
+      );
+    }
+
+    bool handleDeliveryNoteKey(KeyEvent event) {
+      if (!dialogOpen) return false;
+      if (event is! KeyDownEvent) return false;
+
+      if (event.logicalKey == LogicalKeyboardKey.escape) {
+        dialogOpen = false;
+        if (activeDialogCtx != null && Navigator.canPop(activeDialogCtx!)) {
+          Navigator.pop(activeDialogCtx!);
+        }
+        return true;
+      }
+
+      if (event.logicalKey == LogicalKeyboardKey.enter ||
+          event.logicalKey == LogicalKeyboardKey.numpadEnter) {
+        if (activeDialogCtx != null) {
+          executePrintNow(activeDialogCtx!);
+        }
+        return true;
+      }
+
+      if (event.logicalKey == LogicalKeyboardKey.arrowRight ||
+          event.logicalKey == LogicalKeyboardKey.arrowDown) {
+        final curIdx = formats.indexOf(selectedFormat);
+        final nextIdx = (curIdx + 1) % formats.length;
+        selectedFormat = formats[nextIdx];
+        dialogStateSetter?.call(() {});
+        return true;
+      }
+
+      if (event.logicalKey == LogicalKeyboardKey.arrowLeft ||
+          event.logicalKey == LogicalKeyboardKey.arrowUp) {
+        final curIdx = formats.indexOf(selectedFormat);
+        final prevIdx = (curIdx - 1 + formats.length) % formats.length;
+        selectedFormat = formats[prevIdx];
+        dialogStateSetter?.call(() {});
+        return true;
+      }
+
+      if (event.logicalKey == LogicalKeyboardKey.digit1 ||
+          event.logicalKey == LogicalKeyboardKey.numpad1) {
+        selectedFormat = formats[0];
+        dialogStateSetter?.call(() {});
+        return true;
+      } else if (event.logicalKey == LogicalKeyboardKey.digit2 ||
+                 event.logicalKey == LogicalKeyboardKey.numpad2) {
+        selectedFormat = formats[1];
+        dialogStateSetter?.call(() {});
+        return true;
+      } else if (event.logicalKey == LogicalKeyboardKey.digit3 ||
+                 event.logicalKey == LogicalKeyboardKey.numpad3) {
+        selectedFormat = formats[2];
+        dialogStateSetter?.call(() {});
+        return true;
+      } else if (event.logicalKey == LogicalKeyboardKey.digit4 ||
+                 event.logicalKey == LogicalKeyboardKey.numpad4) {
+        selectedFormat = formats[3];
+        dialogStateSetter?.call(() {});
+        return true;
+      } else if (event.logicalKey == LogicalKeyboardKey.digit5 ||
+                 event.logicalKey == LogicalKeyboardKey.numpad5) {
+        selectedFormat = formats[4];
+        dialogStateSetter?.call(() {});
+        return true;
+      }
+
+      return false;
+    }
+
+    HardwareKeyboard.instance.addHandler(handleDeliveryNoteKey);
+    try {
+      await showDialog(
+        context: context,
+        builder: (dialogCtx) {
+          activeDialogCtx = dialogCtx;
+          return StatefulBuilder(
+            builder: (context, setDialogState) {
+              dialogStateSetter = setDialogState;
+              final isDark = Theme.of(context).brightness == Brightness.dark;
+              final primaryColor = Theme.of(context).primaryColor;
+
+              return AlertDialog(
+                title: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.local_shipping_rounded, color: Colors.blue),
+                    ),
+                    const SizedBox(width: 12),
+                    const Text('Delivery Note (COD)'),
+                  ],
                 ),
-                const SizedBox(width: 12),
-                const Text('Delivery Note (COD)'),
-              ],
-            ),
-            content: SizedBox(
-              width: 520,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                        color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
-                      ),
-                    ),
-                    child: Column(
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              'Invoice: ${sale.invoiceNumber.isNotEmpty ? sale.invoiceNumber : sale.id}',
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                            ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: Colors.orange.withValues(alpha: 0.15),
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: const Text(
-                                'COD ORDER',
-                                style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.deepOrange),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 6),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              'Deliver To: ${sale.customerName.isNotEmpty ? sale.customerName : "Walk-in Customer"}',
-                              style: const TextStyle(fontSize: 12),
-                            ),
-                            Text(
-                              'Collect: $currencySymbol ${sale.total.toStringAsFixed(2)}',
-                              style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.redAccent, fontSize: 13),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
+                content: SizedBox(
+                  width: 540,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Icon(Icons.print_outlined, size: 16, color: Colors.grey),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          'Printer: $configuredPrinter',
-                          style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Colors.blueGrey),
-                          overflow: TextOverflow.ellipsis,
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  const Text('Paper Format:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
-                  const SizedBox(height: 8),
-                  () {
-                    Widget formatCard(String id, String title, String subtitle, IconData icon) {
-                      final isSelected = selectedFormat == id;
-                      return Expanded(
-                        child: InkWell(
-                          onTap: () => setDialogState(() => selectedFormat = id),
-                          borderRadius: BorderRadius.circular(8),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-                            decoration: BoxDecoration(
-                              color: isSelected
-                                  ? primaryColor.withValues(alpha: 0.15)
-                                  : (isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9)),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(
-                                color: isSelected ? primaryColor : Colors.transparent,
-                                width: 1.5,
-                              ),
-                            ),
-                            child: Column(
+                        child: Column(
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Icon(icon, size: 20, color: isSelected ? primaryColor : Colors.grey),
-                                const SizedBox(height: 4),
                                 Text(
-                                  title,
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 10.5,
-                                    color: isSelected ? primaryColor : null,
-                                  ),
-                                  textAlign: TextAlign.center,
-                                  maxLines: 1,
+                                  'Invoice: ${sale.invoiceNumber.isNotEmpty ? sale.invoiceNumber : sale.id}',
+                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                                 ),
-                                Text(
-                                  subtitle,
-                                  style: const TextStyle(fontSize: 9, color: Colors.grey),
-                                  textAlign: TextAlign.center,
-                                  maxLines: 1,
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: Colors.orange.withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: const Text(
+                                    'COD ORDER',
+                                    style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.deepOrange),
+                                  ),
                                 ),
                               ],
                             ),
+                            const SizedBox(height: 6),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  'Deliver To: ${sale.customerName.isNotEmpty ? sale.customerName : "Walk-in Customer"}',
+                                  style: const TextStyle(fontSize: 12),
+                                ),
+                                Text(
+                                  'Collect: $currencySymbol ${sale.total.toStringAsFixed(2)}',
+                                  style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.redAccent, fontSize: 13),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          const Icon(Icons.print_outlined, size: 16, color: Colors.grey),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              'Printer: $configuredPrinter',
+                              style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Colors.blueGrey),
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
-                        ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text('Paper Format:', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
+                          Text(
+                            '◄ ► ඊතල වලින් මාරු කරන්න [1-5]',
+                            style: TextStyle(fontSize: 11, color: primaryColor, fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      () {
+                        Widget formatCard(String id, String numKey, String title, String subtitle, IconData icon) {
+                          final isSelected = selectedFormat == id;
+                          return Expanded(
+                            child: InkWell(
+                              canRequestFocus: false,
+                              onTap: () => setDialogState(() => selectedFormat = id),
+                              borderRadius: BorderRadius.circular(8),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                                decoration: BoxDecoration(
+                                  color: isSelected
+                                      ? primaryColor.withValues(alpha: 0.16)
+                                      : (isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9)),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: isSelected ? primaryColor : Colors.transparent,
+                                    width: isSelected ? 2.0 : 1.5,
+                                  ),
+                                  boxShadow: isSelected
+                                      ? [
+                                          BoxShadow(
+                                            color: primaryColor.withValues(alpha: 0.25),
+                                            blurRadius: 4,
+                                            offset: const Offset(0, 2),
+                                          ),
+                                        ]
+                                      : null,
+                                ),
+                                child: Column(
+                                  children: [
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(icon, size: 18, color: isSelected ? primaryColor : Colors.grey),
+                                        if (isSelected) ...[
+                                          const SizedBox(width: 2),
+                                          Icon(Icons.check_circle, size: 12, color: primaryColor),
+                                        ],
+                                      ],
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      title,
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 10.5,
+                                        color: isSelected ? primaryColor : null,
+                                      ),
+                                      textAlign: TextAlign.center,
+                                      maxLines: 1,
+                                    ),
+                                    Text(
+                                      subtitle,
+                                      style: const TextStyle(fontSize: 8.5, color: Colors.grey),
+                                      textAlign: TextAlign.center,
+                                      maxLines: 1,
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        }
+
+                        return Row(
+                          children: [
+                            formatCard('THERMAL_80MM', '1', '80mm Roll', '(Auto)', Icons.receipt_long),
+                            const SizedBox(width: 6),
+                            formatCard('THERMAL_72MM', '2', '72mm Roll', '(Auto)', Icons.receipt_long_outlined),
+                            const SizedBox(width: 6),
+                            formatCard('THERMAL_58MM', '3', '58mm Roll', '(Auto)', Icons.receipt),
+                            const SizedBox(width: 6),
+                            formatCard('A4', '4', 'A4 Sheet', '(210x297)', Icons.description_outlined),
+                            const SizedBox(width: 6),
+                            formatCard('A5', '5', 'A5 Sheet', '(148x210)', Icons.menu_book_outlined),
+                          ],
+                        );
+                      }(),
+                    ],
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () {
+                      dialogOpen = false;
+                      Navigator.pop(dialogCtx);
+                    },
+                    child: const Text('Cancel (Esc)'),
+                  ),
+                  TextButton.icon(
+                    onPressed: () async {
+                      dialogOpen = false;
+                      Navigator.pop(dialogCtx);
+                      try {
+                        final pdfBytes = await PrintService.generateDeliveryNotePdf(
+                          sale: domainSale,
+                          settings: settings,
+                          currencySymbol: currencySymbol,
+                          storeName: _companyName,
+                          storeAddress: storeAddress,
+                          storePhone: _companyPhone,
+                          formatOverride: selectedFormat,
+                        );
+                        final tempDir = Directory.systemTemp;
+                        final tempFile = File(
+                          '${tempDir.path}/DeliveryNote_${sale.id}.pdf',
+                        );
+                        await tempFile.writeAsBytes(pdfBytes);
+
+                        final escapedPath = tempFile.path.replaceAll("'", "''");
+                        await Process.run('powershell.exe', [
+                          '-Command',
+                          'Set-Clipboard -Path \'$escapedPath\'',
+                        ]);
+
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Delivery Note PDF copied to clipboard! Paste (Ctrl+V) directly into WhatsApp.',
+                            ),
+                          ),
+                        );
+
+                        await Process.run('cmd.exe', [
+                          '/c',
+                          'start',
+                          '',
+                          'https://api.whatsapp.com/send',
+                        ]);
+                      } catch (e) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Failed to share Delivery Note PDF: $e'),
+                          ),
+                        );
+                      }
+                    },
+                    icon: const Icon(Icons.share_outlined, color: Colors.green),
+                    label: const Text('WhatsApp Share'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: () async {
+                      dialogOpen = false;
+                      Navigator.pop(dialogCtx);
+                      final pdfBytes = await PrintService.generateDeliveryNotePdf(
+                        sale: domainSale,
+                        settings: settings,
+                        currencySymbol: currencySymbol,
+                        storeName: _companyName,
+                        storeAddress: storeAddress,
+                        storePhone: _companyPhone,
+                        formatOverride: selectedFormat,
                       );
-                    }
-
-                    return Row(
-                      children: [
-                        formatCard('THERMAL_80MM', '80mm Roll', '(Auto)', Icons.receipt_long),
-                        const SizedBox(width: 6),
-                        formatCard('THERMAL_72MM', '72mm Roll', '(Auto)', Icons.receipt_long_outlined),
-                        const SizedBox(width: 6),
-                        formatCard('THERMAL_58MM', '58mm Roll', '(Auto)', Icons.receipt),
-                        const SizedBox(width: 6),
-                        formatCard('A4', 'A4 Sheet', '(210x297)', Icons.description_outlined),
-                        const SizedBox(width: 6),
-                        formatCard('A5', 'A5 Sheet', '(148x210)', Icons.menu_book_outlined),
-                      ],
-                    );
-                  }(),
+                      await Printing.layoutPdf(
+                        onLayout: (fmt) async => pdfBytes,
+                        name: 'DeliveryNote_${sale.id}',
+                      );
+                    },
+                    icon: const Icon(Icons.visibility_outlined),
+                    label: const Text('Preview / OS Dialog'),
+                  ),
+                  FilledButton.icon(
+                    onPressed: () => executePrintNow(dialogCtx),
+                    icon: const Icon(Icons.print_rounded),
+                    label: const Text('Print Now (Enter)'),
+                  ),
                 ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(dialogCtx),
-                child: const Text('Cancel'),
-              ),
-              TextButton.icon(
-                onPressed: () async {
-                  Navigator.pop(dialogCtx);
-                  try {
-                    final pdfBytes = await PrintService.generateDeliveryNotePdf(
-                      sale: domainSale,
-                      settings: settings,
-                      currencySymbol: currencySymbol,
-                      storeName: _companyName,
-                      storeAddress: storeAddress,
-                      storePhone: _companyPhone,
-                      formatOverride: selectedFormat,
-                    );
-                    final tempDir = Directory.systemTemp;
-                    final tempFile = File(
-                      '${tempDir.path}/DeliveryNote_${sale.id}.pdf',
-                    );
-                    await tempFile.writeAsBytes(pdfBytes);
-
-                    final escapedPath = tempFile.path.replaceAll("'", "''");
-                    await Process.run('powershell.exe', [
-                      '-Command',
-                      'Set-Clipboard -Path \'$escapedPath\'',
-                    ]);
-
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text(
-                          'Delivery Note PDF copied to clipboard! Paste (Ctrl+V) directly into WhatsApp.',
-                        ),
-                      ),
-                    );
-
-                    await Process.run('cmd.exe', [
-                      '/c',
-                      'start',
-                      '',
-                      'https://api.whatsapp.com/send',
-                    ]);
-                  } catch (e) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Failed to share Delivery Note PDF: $e'),
-                      ),
-                    );
-                  }
-                },
-                icon: const Icon(Icons.share_outlined, color: Colors.green),
-                label: const Text('WhatsApp Share'),
-              ),
-              OutlinedButton.icon(
-                onPressed: () async {
-                  Navigator.pop(dialogCtx);
-                  final pdfBytes = await PrintService.generateDeliveryNotePdf(
-                    sale: domainSale,
-                    settings: settings,
-                    currencySymbol: currencySymbol,
-                    storeName: _companyName,
-                    storeAddress: storeAddress,
-                    storePhone: _companyPhone,
-                    formatOverride: selectedFormat,
-                  );
-                  await Printing.layoutPdf(
-                    onLayout: (fmt) async => pdfBytes,
-                    name: 'DeliveryNote_${sale.id}',
-                  );
-                },
-                icon: const Icon(Icons.visibility_outlined),
-                label: const Text('Preview / OS Dialog'),
-              ),
-              FilledButton.icon(
-                onPressed: () async {
-                  Navigator.pop(dialogCtx);
-                  await PrintService.printDeliveryNote(
-                    sale: domainSale,
-                    settings: settings,
-                    currencySymbol: currencySymbol,
-                    storeName: _companyName,
-                    storeAddress: storeAddress,
-                    storePhone: _companyPhone,
-                    formatOverride: selectedFormat,
-                  );
-                },
-                icon: const Icon(Icons.print_rounded),
-                label: const Text('Print Now'),
-              ),
-            ],
+              );
+            },
           );
         },
-      ),
-    );
+      );
+    } finally {
+      dialogOpen = false;
+      HardwareKeyboard.instance.removeHandler(handleDeliveryNoteKey);
+    }
   }
 
   Future<void> _cancelSaleInvoice(_SaleRecord sale) async {
@@ -14859,7 +15150,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         : const Color(0xFFF5F6FF);
     return LayoutBuilder(
       builder: (context, constraints) {
-        final compactLayout = constraints.maxWidth < UiBreakpoints.tablet;
+        final compactLayout = constraints.maxWidth < 700;
 
         if (!compactLayout) {
           return Row(

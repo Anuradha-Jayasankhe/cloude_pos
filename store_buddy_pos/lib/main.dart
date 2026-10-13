@@ -68,7 +68,10 @@ class _StartupGateState extends State<StartupGate> {
       builder: (context, state) {
         if (state is AuthLoading) {
           return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
+            backgroundColor: Color(0xFF070B14),
+            body: Center(
+              child: CircularProgressIndicator(color: Color(0xFF6366F1)),
+            ),
           );
         }
 

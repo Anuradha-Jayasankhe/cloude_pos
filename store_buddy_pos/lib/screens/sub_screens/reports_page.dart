@@ -91,7 +91,7 @@ extension _ReportsPageExt on _DashboardScreenState {
     }).toList();
 
     final filteredSaleIds = filteredSales.map((s) => s.id).toSet();
-    final totalRefundedReturns = _returns.where((r) {
+    final totalRefundedReturns = _scopedReturns.where((r) {
       if (r.status == 'Rejected') return false;
       if (r.refundMethod == 'NO_PAYOUT' || r.amount <= 0) return false;
       final rDate = DateTime.tryParse(r.createdAt) ?? DateTime.now();
@@ -123,17 +123,24 @@ extension _ReportsPageExt on _DashboardScreenState {
 
     final soldUnits = realizedSales.fold<double>(
       0,
-      (sum, sale) => sum + sale.items.fold<double>(0, (inner, item) => inner + item.quantity),
+      (sum, sale) => sum + sale.items.fold<double>(0, (inner, item) {
+        final ret = _returnedQtyForSaleItem(sale.id, item.productId);
+        return inner + (item.quantity - ret).clamp(0.0, double.infinity);
+      }),
     );
 
     // Sales Profit Calculations (Item level lookup)
     double getSaleProfit(_SaleRecord sale) {
       double profit = 0.0;
       for (final item in sale.items) {
+        final returnedQty = _returnedQtyForSaleItem(sale.id, item.productId);
+        final netQty = (item.quantity - returnedQty).clamp(0.0, double.infinity);
+        if (netQty <= 0) continue;
         final prodIdx = _products.indexWhere((p) => p.id == item.productId);
         final unitCost = prodIdx >= 0 ? _unitInventoryCost(_products[prodIdx]) : 0.0;
-        final itemCost = unitCost * item.quantity;
-        profit += (item.lineTotal - itemCost);
+        final itemCost = unitCost * netQty;
+        final itemLineNet = item.quantity > 0 ? (item.lineTotal / item.quantity) * netQty : 0.0;
+        profit += (itemLineNet - itemCost);
       }
       return profit;
     }

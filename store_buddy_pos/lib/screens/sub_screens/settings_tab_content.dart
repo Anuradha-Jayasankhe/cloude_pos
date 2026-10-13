@@ -326,6 +326,18 @@ extension _settings_tab_contentExt on _DashboardScreenState {
                         },
                       ),
                     ],
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Enable Shopping Bag Charges in POS (ෂොපින් බෑග් විකිණීම)'),
+                      subtitle: const Text(
+                        'Checkout කිරීමේදී Shopping Bag ගාස්තු එකතු කිරීමේ Confirmation Popup එක පෙන්වයි.',
+                      ),
+                      value: _enableShoppingBagCharges,
+                      onChanged: (v) {
+                        setState(() => _enableShoppingBagCharges = v);
+                        _persistWorkspaceData();
+                      },
+                    ),
                   ],
                 ),
               ),

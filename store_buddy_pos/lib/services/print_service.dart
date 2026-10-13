@@ -1983,7 +1983,7 @@ class PrintService {
           pw.Center(
             child: pw.Text(
               _pdfSafe(
-                'Powered by StoreBuddy POS Software | ${storePhone.trim().isEmpty ? storeName : storePhone} | www.storebuddy.com.lk',
+                'Powered by StoreBuddy POS Software | 072-9545538 | www.storebuddy.com.lk',
               ),
               style: smallStyle,
               textAlign: pw.TextAlign.center,
@@ -2737,6 +2737,15 @@ class PrintService {
             ),
           ],
         ),
+        if (settings.showFooter) ...[
+          pw.SizedBox(height: 12),
+          pw.Center(
+            child: pw.Text(
+              'Powered by StoreBuddy POS Software | 072-9545538 | www.storebuddy.com.lk',
+              style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey700),
+            ),
+          ),
+        ],
       ],
     ];
   }
@@ -3054,7 +3063,7 @@ class PrintService {
       ),
       pw.SizedBox(height: 2),
       pw.Center(
-        child: pw.Text('Powered by StoreBuddy POS', style: smallStyle),
+        child: pw.Text('Powered by StoreBuddy POS | 072-9545538 | www.storebuddy.com.lk', style: smallStyle),
       ),
     ];
   }
