@@ -1496,10 +1496,308 @@ extension _settings_tab_contentExt on _DashboardScreenState {
             ),
           ],
         );
+      case 'shortcuts':
+        return _buildKeyboardShortcutsSettingsTab();
       default:
         return const Text(
           'This settings section is ready for integration configuration.',
         );
     }
+  }
+
+  Widget _buildKeyboardShortcutsSettingsTab() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final theme = Theme.of(context);
+
+    final shortcutsList = [
+      {
+        'key': 'completeSale',
+        'title': 'Complete Sale / Fast Checkout',
+        'sinhala': 'බිල අවසන් කිරීම / Fast Checkout',
+        'desc': 'Instantly process checkout or complete the sale with exact cash / selected payment.',
+        'icon': Icons.check_circle_rounded,
+        'color': const Color(0xFF10B981),
+      },
+      {
+        'key': 'focusSearch',
+        'title': 'Focus Product Search',
+        'sinhala': 'භාණ්ඩ සෙවුම (Search Bar) වෙත යෑම',
+        'desc': 'Focuses on the search bar so you can instantly search by name, barcode, or SKU.',
+        'icon': Icons.search_rounded,
+        'color': const Color(0xFF6366F1),
+      },
+      {
+        'key': 'payCash',
+        'title': 'Select Cash Payment',
+        'sinhala': 'මුදල් ගෙවීම (Cash) තෝරාගැනීම',
+        'desc': 'Switches payment method to CASH and sets exact grand total.',
+        'icon': Icons.payments_rounded,
+        'color': const Color(0xFF059669),
+      },
+      {
+        'key': 'payCard',
+        'title': 'Select Card Payment',
+        'sinhala': 'කාඩ්පත් ගෙවීම (Card) තෝරාගැනීම',
+        'desc': 'Switches payment method to CARD for card swipe / terminal.',
+        'icon': Icons.credit_card_rounded,
+        'color': const Color(0xFF2563EB),
+      },
+      {
+        'key': 'holdCart',
+        'title': 'Hold Current Cart',
+        'sinhala': 'දැනට ඇති බිල Hold කිරීම',
+        'desc': 'Suspends the current cart so you can serve another customer.',
+        'icon': Icons.pause_circle_outline_rounded,
+        'color': const Color(0xFFF59E0B),
+      },
+      {
+        'key': 'resumeCart',
+        'title': 'Resume Held Cart',
+        'sinhala': 'Hold කළ බිල්පතක් ආපසු ගැනීම',
+        'desc': 'Restores a previously held transaction back to the cart.',
+        'icon': Icons.play_circle_outline_rounded,
+        'color': const Color(0xFF3B82F6),
+      },
+      {
+        'key': 'clearCart',
+        'title': 'Clear Shopping Cart',
+        'sinhala': 'Cart එක හිස් කිරීම',
+        'desc': 'Empties all items currently in the POS cart.',
+        'icon': Icons.delete_sweep_rounded,
+        'color': const Color(0xFFEF4444),
+      },
+      {
+        'key': 'billPreview',
+        'title': 'Preview Receipt / Bill',
+        'sinhala': 'බිල්පතේ මුද්‍රණ පෙරදසුන (Preview)',
+        'desc': 'Opens live receipt preview before finalizing the sale.',
+        'icon': Icons.receipt_long_rounded,
+        'color': const Color(0xFF8B5CF6),
+      },
+      {
+        'key': 'openDiscount',
+        'title': 'Apply Bill Discount',
+        'sinhala': 'මුළු බිලට වට්ටමක් (Discount) ලබා දීම',
+        'desc': 'Opens the invoice discount modal to give percent or fixed discount.',
+        'icon': Icons.discount_rounded,
+        'color': const Color(0xFFEC4899),
+      },
+      {
+        'key': 'addCustomer',
+        'title': 'Add Customer to Bill',
+        'sinhala': 'Customer කෙනෙකු තෝරා ගැනීම',
+        'desc': 'Focuses customer search or opens customer picker.',
+        'icon': Icons.person_add_alt_1_rounded,
+        'color': const Color(0xFF06B6D4),
+      },
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'POS Keyboard Shortcuts (යතුරුපුවරු කෙටිමං)',
+                    style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'කැෂියර්ට ඉතා පහසුවෙන් Keyboard එකෙන් පමණක් POS මෙහෙයුම් සිදු කිරීමට අවශ්‍ය පරිදි Keys සකසා ගන්න.',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            OutlinedButton.icon(
+              onPressed: () async {
+                final confirm = await showDialog<bool>(
+                  context: context,
+                  builder: (c) => AlertDialog(
+                    title: const Text('Reset All Shortcuts?'),
+                    content: const Text(
+                      'සියලුම Keyboard Shortcuts මුල් සැකසුම් (Default Keys) වෙත ආපසු හරවන්නද?',
+                    ),
+                    actions: [
+                      TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')),
+                      ElevatedButton(onPressed: () => Navigator.pop(c, true), child: const Text('Reset Defaults')),
+                    ],
+                  ),
+                );
+                if (confirm == true) {
+                  await _resetKeyboardShortcuts();
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Shortcuts reset to factory defaults!'),
+                        backgroundColor: Color(0xFF10B981),
+                      ),
+                    );
+                  }
+                }
+              },
+              icon: const Icon(Icons.refresh_rounded, size: 16),
+              label: const Text('Reset Defaults (මුල් සැකසුම්)'),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 18),
+
+        // Helpful tip card
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: const Color(0xFF6366F1).withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: const Color(0xFF6366F1).withValues(alpha: 0.25)),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.tips_and_updates_rounded, color: Color(0xFF6366F1), size: 24),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  '💡 ඉඟිය: වෙනස් කිරීමට කැමති Shortcut එක මත click කර, Keyboard එකේ ඔබ කැමති Key එකක් (e.g. Enter, F1-F12, Space) ඔබන්න. Barcode Scanner මඟින් scan කරන විට එය ස්වයංක්‍රීයව හඳුනා ගන්නා අතර Shortcuts වලට බාධා නොවේ.',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    color: isDark ? const Color(0xFFC7D2FE) : const Color(0xFF3730A3),
+                    height: 1.4,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 18),
+
+        // Shortcuts Table / Grid
+        Card(
+          elevation: 0,
+          color: isDark ? const Color(0xFF131D2E) : Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+            side: BorderSide(
+              color: isDark ? const Color(0xFF1E2D45) : const Color(0xFFE2E8F0),
+            ),
+          ),
+          child: ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: shortcutsList.length,
+            separatorBuilder: (context, index) => Divider(
+              height: 1,
+              color: isDark ? Colors.white10 : Colors.grey.shade200,
+            ),
+            itemBuilder: (context, index) {
+              final item = shortcutsList[index];
+              final actionKey = item['key'] as String;
+              final currentKey = _posShortcuts[actionKey] ?? _DashboardScreenState._defaultPosShortcuts[actionKey] ?? '';
+              final color = item['color'] as Color;
+
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: color.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(item['icon'] as IconData, color: color, size: 20),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Text(
+                                item['title'] as String,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                '(${item['sinhala']})',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            item['desc'] as String,
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              color: isDark ? Colors.grey.shade500 : Colors.grey.shade600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    InkWell(
+                      onTap: () => _showCaptureShortcutKeyDialog(
+                        actionKey: actionKey,
+                        actionLabel: item['title'] as String,
+                        sinhalaLabel: item['sinhala'] as String,
+                      ),
+                      borderRadius: BorderRadius.circular(10),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: isDark ? Colors.white.withValues(alpha: 0.08) : const Color(0xFFF1F5F9),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: color.withValues(alpha: 0.5),
+                            width: 1.5,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              currentKey,
+                              style: TextStyle(
+                                fontFamily: 'monospace',
+                                fontWeight: FontWeight.w800,
+                                fontSize: 14,
+                                color: color,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Icon(Icons.edit_rounded, size: 14, color: color.withValues(alpha: 0.7)),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
   }
 }

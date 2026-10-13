@@ -1333,6 +1333,8 @@ extension _point_of_saleExt on _DashboardScreenState {
       });
     }
 
+    _onPosCheckoutRequested = _handlePosEnterKeyFlow;
+
     final rawFilteredProducts = _scopedProducts.where((p) {
       final q = _productSearchController.text.trim().toLowerCase();
       final selectedCategory = _posCategoryFilter.trim().toLowerCase();
@@ -1470,7 +1472,9 @@ extension _point_of_saleExt on _DashboardScreenState {
     final rawPaidAmount =
         double.tryParse(_amountPaidController.text.trim()) ?? 0;
     final effectivePaidAmount = allowsManualPaidAmount
-        ? rawPaidAmount
+        ? (paymentMethod == 'CASH' && _amountPaidController.text.trim().isEmpty
+            ? grandTotal
+            : rawPaidAmount)
         : grandTotal;
     final balanceAmount = (grandTotal - effectivePaidAmount)
         .clamp(0, double.infinity)
@@ -1586,8 +1590,27 @@ extension _point_of_saleExt on _DashboardScreenState {
                   ),
                 ],
               ),
-              if (_isCashier && activeSession != null)
-                Container(
+              Wrap(
+                spacing: 10,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: _showPosShortcutsGuideDialog,
+                    icon: const Icon(Icons.keyboard_outlined, size: 18),
+                    label: const Text('Shortcuts (කෙටිමං)'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 12,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                  if (_isCashier && activeSession != null)
+                    Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 16,
                     vertical: 10,
@@ -1649,8 +1672,10 @@ extension _point_of_saleExt on _DashboardScreenState {
                 ),
             ],
           ),
-          const SizedBox(height: 14),
-          // Avoid Flexible/Expanded inside scroll view (causes blank layout).
+        ],
+      ),
+      const SizedBox(height: 14),
+      // Avoid Flexible/Expanded inside scroll view (causes blank layout).
           // Build product + cart as normal children; page scrolls as a whole.
           Builder(
             builder: (context) {
@@ -2377,12 +2402,16 @@ extension _point_of_saleExt on _DashboardScreenState {
                             final target = matches.isNotEmpty
                                 ? matches.first
                                 : p;
-                            if (target.stock <= 0) return;
-                            if (target.allowLooseSales) {
-                              _showDualUnitSelectionDialog(target);
-                            } else {
-                              _addToCartWithImeiSelection(target);
+                            if (target.stock <= 0) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('This product is out of stock!'),
+                                  duration: Duration(seconds: 1),
+                                ),
+                              );
+                              return;
                             }
+                            _showAddToCartQuantityDialog(target);
                           }
                         },
                         child: cardContent,
@@ -3964,7 +3993,7 @@ extension _point_of_saleExt on _DashboardScreenState {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    // ── CARD 3: PAYMENT METHOD & CUSTOMER ──
+                    // ── CARD 3: CUSTOMER SELECTION ──
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.all(12),
@@ -3981,170 +4010,6 @@ extension _point_of_saleExt on _DashboardScreenState {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Row(
-                            children: [
-                              Icon(
-                                Icons.payment_rounded,
-                                size: 16,
-                                color: isDark
-                                    ? Colors.grey.shade400
-                                    : const Color(0xFF475569),
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                'PAYMENT METHOD',
-                                style: TextStyle(
-                                  fontSize: 11.5,
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: 0.5,
-                                  color: isDark
-                                      ? Colors.grey.shade400
-                                      : const Color(0xFF475569),
-                                ),
-                              ),
-                              const Spacer(),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 2.5,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: AppTheme.brandIndigo.withValues(alpha: 0.1),
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: Text(
-                                  paymentMethod,
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w700,
-                                    color: AppTheme.brandIndigo,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        _posPaymentCompactButton(
-                          'CASH',
-                          'Cash',
-                          paymentMethod,
-                          grandTotal,
-                        ),
-                        _posPaymentCompactButton(
-                          'CARD',
-                          'Card',
-                          paymentMethod,
-                          grandTotal,
-                        ),
-                        _posPaymentCompactButton(
-                          'CHEQUE',
-                          'Cheque',
-                          paymentMethod,
-                          grandTotal,
-                        ),
-                        _posPaymentCompactButton(
-                          'CREDIT',
-                          'Credit',
-                          paymentMethod,
-                          grandTotal,
-                        ),
-                        _posPaymentCompactButton(
-                          'INSTALLMENT',
-                          'Installment',
-                          paymentMethod,
-                          grandTotal,
-                        ),
-                        if (_enableCod)
-                          _posPaymentCompactButton(
-                            'COD',
-                            'COD',
-                            paymentMethod,
-                            grandTotal,
-                          ),
-                      ],
-                    ),
-                    if (paymentMethod == 'COD') ...[
-                      const SizedBox(height: 10),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF59E0B).withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                            color: const Color(0xFFF59E0B).withValues(alpha: 0.4),
-                            width: 1.2,
-                          ),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(
-                              Icons.local_shipping_outlined,
-                              color: Color(0xFFD97706),
-                              size: 20,
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    _t('Delivery Fee (COD):'),
-                                    style: const TextStyle(
-                                      fontSize: 12.5,
-                                      fontWeight: FontWeight.bold,
-                                      color: Color(0xFFB45309),
-                                    ),
-                                  ),
-                                  const Text(
-                                    'Added to customer cash to collect',
-                                    style: TextStyle(
-                                      fontSize: 10.5,
-                                      color: Colors.grey,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            SizedBox(
-                              width: 110,
-                              child: TextField(
-                                controller: _posShippingController,
-                                keyboardType: const TextInputType.numberWithOptions(
-                                  decimal: true,
-                                ),
-                                decoration: InputDecoration(
-                                  isDense: true,
-                                  border: const OutlineInputBorder(),
-                                  hintText: '0.00',
-                                  prefixText: '${_currency == 'USD' ? '\$' : (_currency == 'LKR' ? 'Rs.' : _currency)} ',
-                                  prefixStyle: const TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 6,
-                                  ),
-                                ),
-                                onChanged: (v) {
-                                  setState(() {
-                                    _posShippingCharges =
-                                        double.tryParse(v) ?? 0.0;
-                                  });
-                                },
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                    if (_posAllowCustomerOnAllPayments ||
-                        (paymentMethod != 'CASH' && paymentMethod != 'CARD')) ...[
-                      const SizedBox(height: 14),
-                      Row(
                         children: [
                           Expanded(
                             child: Row(
@@ -4547,508 +4412,10 @@ extension _point_of_saleExt on _DashboardScreenState {
                           ),
                         ),
                       ],
-                    ],
                         ],
                       ),
                     ),
-                    const SizedBox(height: 12),
-                    // ── CARD 4: TENDER & PAYMENT ──
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: isDark ? const Color(0xFF131D2E) : Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: isDark
-                              ? const Color(0xFF1E2D45)
-                              : const Color(0xFFE2E8F0),
-                        ),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Icon(
-                                Icons.point_of_sale_rounded,
-                                size: 16,
-                                color: isDark
-                                    ? Colors.grey.shade400
-                                    : const Color(0xFF475569),
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                'TENDER & PAYMENT',
-                                style: TextStyle(
-                                  fontSize: 11.5,
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: 0.5,
-                                  color: isDark
-                                      ? Colors.grey.shade400
-                                      : const Color(0xFF475569),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 10),
-                          const Text(
-                            'Amount Paid',
-                            style: TextStyle(fontWeight: FontWeight.w600),
-                          ),
-                          const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextField(
-                            controller: _amountPaidController,
-                            readOnly: !allowsManualPaidAmount,
-                            keyboardType: TextInputType.number,
-                            decoration: const InputDecoration(
-                              hintText: '0.00',
-                              border: OutlineInputBorder(),
-                              isDense: true,
-                            ),
-                            onChanged: (_) => setState(() {}),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        SizedBox(
-                          height: 44,
-                          child: OutlinedButton(
-                            onPressed: allowsManualPaidAmount
-                                ? () {
-                                    setState(() {
-                                      _amountPaidController.text = grandTotal
-                                          .toStringAsFixed(2);
-                                    });
-                                  }
-                                : null,
-                            child: const Text('Exact'),
-                          ),
-                        ),
-                      ],
-                    ),
-                    if (allowsManualPaidAmount) ...[
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 6,
-                        children: [
-                          ...[100, 500, 1000, 5000].map((amt) {
-                            final label = _currency == 'LKR' ? 'Rs. $amt' : '$amt';
-                            return ActionChip(
-                              label: Text(label),
-                              labelStyle: const TextStyle(
-                                fontSize: 11.5,
-                                fontWeight: FontWeight.w600,
-                              ),
-                              visualDensity: VisualDensity.compact,
-                              padding: const EdgeInsets.symmetric(horizontal: 4),
-                              onPressed: () {
-                                setState(() {
-                                  _amountPaidController.text =
-                                      amt.toDouble().toStringAsFixed(2);
-                                });
-                              },
-                            );
-                          }),
-                        ],
-                      ),
-                    ],
-                    if (isChequePayment) ...[
-                      const SizedBox(height: 10),
-                      const Text(
-                        'Cheque Number',
-                        style: TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: _chequeNumberController,
-                        decoration: const InputDecoration(
-                          hintText: 'Enter cheque number',
-                          border: OutlineInputBorder(),
-                          isDense: true,
-                        ),
-                      ),
-                    ],
-                    if (isInstallmentPayment) ...[
-                      const SizedBox(height: 12),
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF7F2FB),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: const Color(0xFFE6D9F3)),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Installment Plan',
-                              style: TextStyle(
-                                fontWeight: FontWeight.w700,
-                                color: Color(0xFF7A1EA4),
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                                vertical: 8,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(
-                                  color: const Color(0xFFE6D9F3),
-                                ),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Remaining Balance: ${_money(balanceAmount)}',
-                                  ),
-                                  Text(
-                                    'Planned Installments: ${_money(installmentPlannedTotal)}',
-                                  ),
-                                  Text(
-                                    'Difference: ${_money(installmentDifference)}',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      color: installmentDifference.abs() <= 0.01
-                                          ? const Color(0xFF2E9C64)
-                                          : const Color(0xFFB42318),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: TextFormField(
-                                    key: ValueKey(
-                                      'pos-installment-count-$installmentCount',
-                                    ),
-                                    initialValue: installmentCount.toString(),
-                                    keyboardType: TextInputType.number,
-                                    decoration: const InputDecoration(
-                                      labelText: 'Number of Installments',
-                                      border: OutlineInputBorder(),
-                                      isDense: true,
-                                    ),
-                                    onChanged: (value) {
-                                      final parsed = int.tryParse(value.trim());
-                                      if (parsed == null) {
-                                        return;
-                                      }
-                                      final safe = parsed.clamp(1, 60);
-                                      if (_posInstallmentCount == safe) {
-                                        return;
-                                      }
-                                      setState(() {
-                                        _posInstallmentCount = safe.toInt();
-                                        _resetPosInstallmentSchedule();
-                                        _syncPosInstallmentAmounts(
-                                          balanceAmount,
-                                        );
-                                      });
-                                    },
-                                    onFieldSubmitted: (value) {
-                                      final parsed =
-                                          int.tryParse(value.trim()) ??
-                                          installmentCount;
-                                      final safe = parsed.clamp(1, 60);
-                                      setState(() {
-                                        _posInstallmentCount = safe.toInt();
-                                        _resetPosInstallmentSchedule();
-                                        _syncPosInstallmentAmounts(
-                                          balanceAmount,
-                                        );
-                                      });
-                                    },
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: TextFormField(
-                                    key: ValueKey(
-                                      'pos-installment-interval-$installmentIntervalDays',
-                                    ),
-                                    initialValue: installmentIntervalDays
-                                        .toString(),
-                                    keyboardType: TextInputType.number,
-                                    decoration: const InputDecoration(
-                                      labelText: 'Payable Every (Days)',
-                                      border: OutlineInputBorder(),
-                                      isDense: true,
-                                    ),
-                                    onChanged: (value) {
-                                      final parsed = int.tryParse(value.trim());
-                                      if (parsed == null) {
-                                        return;
-                                      }
-                                      final safe = parsed.clamp(1, 365);
-                                      if (_posInstallmentIntervalDays == safe) {
-                                        return;
-                                      }
-                                      setState(() {
-                                        _posInstallmentIntervalDays = safe
-                                            .toInt();
-                                        _resetPosInstallmentSchedule();
-                                        _syncPosInstallmentAmounts(
-                                          balanceAmount,
-                                        );
-                                      });
-                                    },
-                                    onFieldSubmitted: (value) {
-                                      final parsed =
-                                          int.tryParse(value.trim()) ??
-                                          installmentIntervalDays;
-                                      final safe = parsed.clamp(1, 365);
-                                      setState(() {
-                                        _posInstallmentIntervalDays = safe
-                                            .toInt();
-                                        _resetPosInstallmentSchedule();
-                                        _syncPosInstallmentAmounts(
-                                          balanceAmount,
-                                        );
-                                      });
-                                    },
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 10),
-                            ...List.generate(installmentCount, (index) {
-                              final dueDate = installmentDueDates[index];
-                              final amount = installmentAmounts[index];
-                              return Padding(
-                                padding: const EdgeInsets.only(bottom: 6),
-                                child: Row(
-                                  children: [
-                                    Expanded(
-                                      child: Row(
-                                        children: [
-                                          Text(
-                                            '#${index + 1}',
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                          ),
-                                          const SizedBox(width: 8),
-                                          Expanded(
-                                            child: TextFormField(
-                                              key: ValueKey(
-                                                'pos-installment-amount-$index-${amount.toStringAsFixed(2)}',
-                                              ),
-                                              initialValue: amount
-                                                  .toStringAsFixed(2),
-                                              keyboardType:
-                                                  const TextInputType.numberWithOptions(
-                                                    decimal: true,
-                                                  ),
-                                              decoration: const InputDecoration(
-                                                labelText: 'Amount',
-                                                border: OutlineInputBorder(),
-                                                isDense: true,
-                                              ),
-                                              onChanged: (value) {
-                                                final parsed = double.tryParse(
-                                                  value.trim(),
-                                                );
-                                                if (parsed == null) {
-                                                  return;
-                                                }
-                                                setState(() {
-                                                  _updatePosInstallmentAmount(
-                                                    installmentIndex: index,
-                                                    newAmount: parsed,
-                                                    totalAmount: balanceAmount,
-                                                  );
-                                                });
-                                              },
-                                              onFieldSubmitted: (value) {
-                                                final parsed = double.tryParse(
-                                                  value.trim(),
-                                                );
-                                                if (parsed == null) {
-                                                  return;
-                                                }
-                                                setState(() {
-                                                  _updatePosInstallmentAmount(
-                                                    installmentIndex: index,
-                                                    newAmount: parsed,
-                                                    totalAmount: balanceAmount,
-                                                  );
-                                                });
-                                              },
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    TextButton.icon(
-                                      onPressed: () async {
-                                        final picked = await showDatePicker(
-                                          context: context,
-                                          initialDate: dueDate,
-                                          firstDate: DateTime(2020),
-                                          lastDate: DateTime(2100),
-                                        );
-                                        if (picked == null) return;
-                                        setState(() {
-                                          if (_posInstallmentDueDates.length !=
-                                              installmentCount) {
-                                            _resetPosInstallmentSchedule(
-                                              startFrom: DateTime.now(),
-                                            );
-                                          }
-                                          _posInstallmentDueDates[index] =
-                                              DateTime(
-                                                picked.year,
-                                                picked.month,
-                                                picked.day,
-                                              );
-                                        });
-                                      },
-                                      icon: const Icon(
-                                        Icons.edit_calendar_rounded,
-                                        size: 16,
-                                      ),
-                                      label: Text(_formatDate(dueDate)),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            }),
-                          ],
-                        ),
-                      ),
-                    ],
-                    if (paymentMethod == 'COD') ...[
-                      const SizedBox(height: 12),
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: _posCodPaymentCollectedUpfront
-                              ? const Color(0xFFECFDF5)
-                              : const Color(0xFFFFFBEB),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(
-                            color: _posCodPaymentCollectedUpfront
-                                ? const Color(0xFFA7F3D0)
-                                : const Color(0xFFFDE68A),
-                          ),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Icon(
-                                  _posCodPaymentCollectedUpfront
-                                      ? Icons.check_circle_outline
-                                      : Icons.local_shipping_outlined,
-                                  color: _posCodPaymentCollectedUpfront
-                                      ? const Color(0xFF059669)
-                                      : const Color(0xFFD97706),
-                                  size: 20,
-                                ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  'COD Payment Status',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                    color: _posCodPaymentCollectedUpfront
-                                        ? const Color(0xFF065F46)
-                                        : const Color(0xFF92400E),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 6),
-                            CheckboxListTile(
-                              contentPadding: EdgeInsets.zero,
-                              dense: true,
-                              title: const Text(
-                                'Payment already received (Prepaid COD)',
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              subtitle: Text(
-                                _posCodPaymentCollectedUpfront
-                                    ? 'Money is collected now. Added to cash drawer & recognized revenue immediately.'
-                                    : 'Payment will be collected upon delivery. Excluded from drawer/revenue until delivery collection.',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: Colors.grey.shade700,
-                                ),
-                              ),
-                              value: _posCodPaymentCollectedUpfront,
-                              onChanged: (val) {
-                                setState(() {
-                                  _posCodPaymentCollectedUpfront = val ?? false;
-                                });
-                              },
-                            ),
-                            () {
-                              final availableDrivers = _scopedUsers
-                                  .where((u) => u.role.toUpperCase() == 'DELIVERY' && u.active)
-                                  .toList();
-                              if (availableDrivers.isEmpty) {
-                                return const SizedBox.shrink();
-                              }
-                              return Padding(
-                                padding: const EdgeInsets.only(top: 8.0),
-                                child: DropdownButtonFormField<String?>(
-                                  value: _posSelectedDeliveryDriverId,
-                                  isExpanded: true,
-                                  decoration: InputDecoration(
-                                    labelText: 'Assign Delivery Driver (Optional)',
-                                    prefixIcon: const Icon(Icons.delivery_dining_rounded, color: Colors.blue),
-                                    filled: true,
-                                    fillColor: Theme.of(context).brightness == Brightness.dark
-                                        ? const Color(0xFF1E293B)
-                                        : const Color(0xFFF8FAFC),
-                                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                                    isDense: true,
-                                  ),
-                                  items: [
-                                    const DropdownMenuItem<String?>(
-                                      value: null,
-                                      child: Text('Unassigned (Assign Later in Sales)'),
-                                    ),
-                                    ...availableDrivers.map(
-                                      (d) => DropdownMenuItem<String?>(
-                                        value: d.id,
-                                        child: Text('${d.name} (${d.email.isNotEmpty ? d.email : d.role.toUpperCase()})'),
-                                      ),
-                                    ),
-                                  ],
-                                  onChanged: (val) {
-                                    setState(() {
-                                      _posSelectedDeliveryDriverId = val;
-                                    });
-                                  },
-                                ),
-                              );
-                            }(),
-                          ],
-                        ),
-                      ),
-                    ],
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 12),
+                    const SizedBox(height: 14),
                     // ── CHECKOUT ACTION BUTTON ──
                     Container(
                       height: 52,
@@ -5076,7 +4443,2776 @@ extension _point_of_saleExt on _DashboardScreenState {
                               ],
                       ),
                       child: ElevatedButton(
-                        onPressed: () async {
+                        onPressed: (cartItems.isEmpty || isAllLocations)
+                            ? null
+                            : () => _startPosCheckoutFlow(),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.transparent,
+                          foregroundColor: Colors.white,
+                          shadowColor: Colors.transparent,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(UiRadius.md),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              _editingSaleId != null
+                                  ? Icons.save_rounded
+                                  : Icons.check_circle_outline_rounded,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              _editingSaleId != null
+                                  ? 'Update Bill • ${_money(grandTotal)}'
+                                  : 'Complete Sale (${_posShortcuts['completeSale'] ?? 'Enter'}) • ${_money(grandTotal)}',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 15,
+                                letterSpacing: 0.3,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+
+              if (isCompact) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    productPanel,
+                    const SizedBox(height: 12),
+                    cartPanel,
+                  ],
+                );
+              }
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(flex: 5, child: productPanel),
+                  const SizedBox(width: 16),
+                  Expanded(flex: 4, child: cartPanel),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+
+    if (activeSession == null) {
+      return Stack(
+        children: [
+          AbsorbPointer(
+            absorbing: true,
+            child: Opacity(opacity: 0.35, child: mainContent),
+          ),
+          Positioned.fill(
+            child: Container(
+              color: Colors.black.withOpacity(0.4),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 8.0, sigmaY: 8.0),
+                child: Center(
+                  child: Container(
+                    width: ResponsiveLayout.adaptiveDialogWidth(context, 480),
+                    margin: const EdgeInsets.all(20),
+                    padding: const EdgeInsets.all(32),
+                    decoration: BoxDecoration(
+                      color: isDark
+                          ? const Color(0xFF1E1B29).withOpacity(0.92)
+                          : Colors.white.withOpacity(0.95),
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(
+                        color: pendingSession != null
+                            ? Colors.amber.withOpacity(0.4)
+                            : Colors.purple.withOpacity(0.3),
+                        width: 1.5,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.35),
+                          blurRadius: 24,
+                          offset: const Offset(0, 8),
+                        ),
+                      ],
+                    ),
+                    child: pendingSession != null
+                        ? Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: Colors.amber.withOpacity(0.15),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.hourglass_top_rounded,
+                                  color: Colors.amber,
+                                  size: 48,
+                                ),
+                              ),
+                              const SizedBox(height: 20),
+                              const Text(
+                                'Shift Close Pending Approval',
+                                style: TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: -0.5,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              Text(
+                                'Your shift close request has been submitted to Admin.\n\nCounted Cash: ${_money(pendingSession.actualCash ?? 0.0)}\nExpected Cash: ${_money(pendingSession.expectedCash)}\n\nPlease wait until Admin approves or verifies the shift before starting a new one.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 13.5,
+                                  color: isDark ? Colors.white70 : Colors.black87,
+                                  height: 1.45,
+                                ),
+                              ),
+                              const SizedBox(height: 24),
+                              if (_isOwner || _isAdmin) ...[
+                                FilledButton.icon(
+                                  style: FilledButton.styleFrom(
+                                    backgroundColor: const Color(0xFF10B981),
+                                    minimumSize: const Size(double.infinity, 46),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                  ),
+                                  icon: const Icon(Icons.check_circle_outline, size: 18),
+                                  label: const Text(
+                                    'Admin: Verify & Approve Now',
+                                    style: TextStyle(fontWeight: FontWeight.bold),
+                                  ),
+                                  onPressed: () async {
+                                    await _approveCloseSession(pendingSession);
+                                    if (mounted) setState(() {});
+                                  },
+                                ),
+                                const SizedBox(height: 10),
+                              ],
+                              OutlinedButton.icon(
+                                style: OutlinedButton.styleFrom(
+                                  minimumSize: const Size(double.infinity, 44),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                                icon: const Icon(Icons.refresh_rounded, size: 16),
+                                label: const Text('Refresh Status'),
+                                onPressed: () {
+                                  setState(() {});
+                                },
+                              ),
+                            ],
+                          )
+                        : Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: Colors.purple.withOpacity(0.12),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.point_of_sale_rounded,
+                                  color: Colors.purple,
+                                  size: 48,
+                                ),
+                              ),
+                              const SizedBox(height: 20),
+                              const Text(
+                                'Open Cashier Shift Required',
+                                style: TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: -0.5,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              Text(
+                                'You must open a cashier shift with a starting cash float (Plot) to perform POS sales transactions.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: isDark ? Colors.white70 : Colors.black87,
+                                  height: 1.4,
+                                ),
+                              ),
+                              const SizedBox(height: 28),
+                              Container(
+                                width: double.infinity,
+                                height: 50,
+                                decoration: BoxDecoration(
+                                  gradient: UiGradients.brand,
+                                  borderRadius: BorderRadius.circular(14),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.purple.withOpacity(0.3),
+                                      blurRadius: 12,
+                                      offset: const Offset(0, 4),
+                                    ),
+                                  ],
+                                ),
+                                child: ElevatedButton.icon(
+                                  onPressed: _triggerOpenRegisterDialog,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.transparent,
+                                    shadowColor: Colors.transparent,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(14),
+                                    ),
+                                  ),
+                                  icon: const Icon(Icons.lock_open_rounded, color: Colors.white),
+                                  label: const Text(
+                                    'Open Cashier Shift',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return mainContent;
+  }
+
+  Widget _posPaymentButton(
+    String key,
+    String label,
+    String selected,
+    double grandTotal,
+  ) {
+    final isSelected = key == selected;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    IconData getIcon(String k) {
+      switch (k.toUpperCase()) {
+        case 'CASH':
+          return Icons.payments_outlined;
+        case 'CARD':
+          return Icons.credit_card_outlined;
+        case 'CHEQUE':
+          return Icons.sticky_note_2_outlined;
+        case 'CREDIT':
+          return Icons.badge_outlined;
+        case 'INSTALLMENT':
+          return Icons.calendar_month_outlined;
+        case 'COD':
+          return Icons.local_shipping_outlined;
+        default:
+          return Icons.payment_outlined;
+      }
+    }
+
+    return Expanded(
+      child: Material(
+        color: isSelected
+            ? (isDark
+                  ? AppTheme.brandIndigo.withValues(alpha: 0.15)
+                  : AppTheme.brandIndigo.withValues(alpha: 0.08))
+            : (isDark ? const Color(0xFF111827) : Colors.white),
+        borderRadius: BorderRadius.circular(UiRadius.md),
+        child: InkWell(
+          onTap: () => _applyPosPaymentMethod(key, grandTotal),
+          borderRadius: BorderRadius.circular(UiRadius.md),
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(UiRadius.md),
+              border: Border.all(
+                color: isSelected
+                    ? AppTheme.brandIndigo
+                    : (isDark
+                          ? const Color(0xFF1E2D45)
+                          : const Color(0xFFE8EAFF)),
+                width: isSelected ? 1.5 : 1,
+              ),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  getIcon(key),
+                  size: 18,
+                  color: isSelected
+                      ? AppTheme.brandIndigo
+                      : (isDark
+                            ? const Color(0xFF94A3B8)
+                            : const Color(0xFF64748B)),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                    color: isSelected
+                        ? AppTheme.brandIndigo
+                        : (isDark
+                              ? const Color(0xFFCBD5E1)
+                              : const Color(0xFF334155)),
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _posPaymentCompactButton(
+    String key,
+    String label,
+    String selected,
+    double grandTotal,
+  ) {
+    final isSelected = key == selected;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    IconData getIcon(String k) {
+      switch (k.toUpperCase()) {
+        case 'CASH':
+          return Icons.payments_outlined;
+        case 'CARD':
+          return Icons.credit_card_outlined;
+        case 'CHEQUE':
+          return Icons.sticky_note_2_outlined;
+        case 'CREDIT':
+          return Icons.badge_outlined;
+        case 'INSTALLMENT':
+          return Icons.calendar_month_outlined;
+        case 'COD':
+          return Icons.local_shipping_outlined;
+        default:
+          return Icons.payment_outlined;
+      }
+    }
+
+    return SizedBox(
+      width: 104,
+      child: Material(
+        color: isSelected
+            ? (isDark
+                  ? AppTheme.brandIndigo.withValues(alpha: 0.15)
+                  : AppTheme.brandIndigo.withValues(alpha: 0.08))
+            : (isDark ? const Color(0xFF111827) : Colors.white),
+        borderRadius: BorderRadius.circular(UiRadius.md),
+        child: InkWell(
+          onTap: () => _applyPosPaymentMethod(key, grandTotal),
+          borderRadius: BorderRadius.circular(UiRadius.md),
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(UiRadius.md),
+              border: Border.all(
+                color: isSelected
+                    ? AppTheme.brandIndigo
+                    : (isDark
+                          ? const Color(0xFF1E2D45)
+                          : const Color(0xFFE8EAFF)),
+                width: isSelected ? 1.5 : 1,
+              ),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  getIcon(key),
+                  size: 16,
+                  color: isSelected
+                      ? AppTheme.brandIndigo
+                      : (isDark
+                            ? const Color(0xFF94A3B8)
+                            : const Color(0xFF64748B)),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                    color: isSelected
+                        ? AppTheme.brandIndigo
+                        : (isDark
+                              ? const Color(0xFFCBD5E1)
+                              : const Color(0xFF334155)),
+                    fontSize: 11,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showLineDiscountDialog(_ProductItem product) {
+    final TextEditingController valueController = TextEditingController(
+      text: _posLineDiscounts[product.id]?.value.toString() ?? '',
+    );
+    String type = _posLineDiscounts[product.id]?.type ?? 'FIXED';
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: Text('Discount for ${product.name}'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: RadioListTile<String>(
+                          title: const Text('Fixed Amount'),
+                          value: 'FIXED',
+                          groupValue: type,
+                          onChanged: (val) {
+                            if (val != null) setDialogState(() => type = val);
+                          },
+                        ),
+                      ),
+                      Expanded(
+                        child: RadioListTile<String>(
+                          title: const Text('Percentage (%)'),
+                          value: 'PERCENT',
+                          groupValue: type,
+                          onChanged: (val) {
+                            if (val != null) setDialogState(() => type = val);
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  TextField(
+                    controller: valueController,
+                    keyboardType: TextInputType.number,
+                    decoration: InputDecoration(
+                      labelText: type == 'PERCENT'
+                          ? 'Discount %'
+                          : 'Discount Amount',
+                      border: const OutlineInputBorder(),
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    setState(() {
+                      _posLineDiscounts.remove(product.id);
+                    });
+                    Navigator.pop(context);
+                  },
+                  child: const Text(
+                    'Clear',
+                    style: TextStyle(color: Colors.red),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    final value = double.tryParse(valueController.text) ?? 0.0;
+                    if (value > 0) {
+                      setState(() {
+                        _posLineDiscounts[product.id] = _DiscountData(
+                          value: type == 'PERCENT'
+                              ? value.clamp(0, 100)
+                              : value,
+                          type: type,
+                        );
+                      });
+                    } else {
+                      setState(() {
+                        _posLineDiscounts.remove(product.id);
+                      });
+                    }
+                    Navigator.pop(context);
+                  },
+                  child: const Text('Apply'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showInvoiceDiscountDialog() {
+    final TextEditingController valueController = TextEditingController(
+      text: _posInvoiceDiscountValue > 0
+          ? _posInvoiceDiscountValue.toString()
+          : '',
+    );
+    String type = _posInvoiceDiscountType;
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Invoice Discount'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: RadioListTile<String>(
+                          title: const Text('Fixed Amount'),
+                          value: 'FIXED',
+                          groupValue: type,
+                          onChanged: (val) {
+                            if (val != null) setDialogState(() => type = val);
+                          },
+                        ),
+                      ),
+                      Expanded(
+                        child: RadioListTile<String>(
+                          title: const Text('Percentage (%)'),
+                          value: 'PERCENT',
+                          groupValue: type,
+                          onChanged: (val) {
+                            if (val != null) setDialogState(() => type = val);
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  TextField(
+                    controller: valueController,
+                    keyboardType: TextInputType.number,
+                    decoration: InputDecoration(
+                      labelText: type == 'PERCENT'
+                          ? 'Discount %'
+                          : 'Discount Amount',
+                      border: const OutlineInputBorder(),
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    setState(() {
+                      _posInvoiceDiscountValue = 0.0;
+                    });
+                    Navigator.pop(context);
+                  },
+                  child: const Text(
+                    'Clear',
+                    style: TextStyle(color: Colors.red),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    final value = double.tryParse(valueController.text) ?? 0.0;
+                    setState(() {
+                      _posInvoiceDiscountValue = type == 'PERCENT'
+                          ? value.clamp(0, 100)
+                          : value;
+                      _posInvoiceDiscountType = type;
+                    });
+                    Navigator.pop(context);
+                  },
+                  child: const Text('Apply'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _showProductSkuSelectionDialog(
+    List<_ProductItem> options,
+  ) async {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
+    await showDialog(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(UiRadius.lg),
+          ),
+          title: const Text(
+            'Select Variant / Batch',
+            style: TextStyle(fontWeight: FontWeight.w800),
+          ),
+          content: SizedBox(
+            width: ResponsiveLayout.adaptiveDialogWidth(context, 500),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Multiple products share this barcode or name. Please select the correct batch / price variant:',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: colorScheme.onSurface.withValues(alpha: 0.7),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Flexible(
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: options.length,
+                    separatorBuilder: (context, index) => const Divider(),
+                    itemBuilder: (context, index) {
+                      final item = options[index];
+                      final expText = item.expiryDate != null
+                          ? ' • Exp: ${item.expiryDate!.toLocal().toString().split(' ').first}'
+                          : '';
+                      final branchText = item.locationId.isNotEmpty && item.locationId != 'LOC_MAIN'
+                          ? ' • Loc: ${item.locationId}'
+                          : '';
+                      return ListTile(
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 6,
+                        ),
+                        title: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    margin: const EdgeInsets.only(right: 6),
+                                    decoration: BoxDecoration(
+                                      color: AppTheme.brandIndigo.withValues(alpha: 0.1),
+                                      borderRadius: BorderRadius.circular(4),
+                                      border: Border.all(color: AppTheme.brandIndigo.withValues(alpha: 0.2)),
+                                    ),
+                                    child: Text(
+                                      'Batch #${index + 1}',
+                                      style: TextStyle(
+                                        fontSize: 10.5,
+                                        fontWeight: FontWeight.bold,
+                                        color: AppTheme.brandIndigo,
+                                      ),
+                                    ),
+                                  ),
+                                  Expanded(
+                                    child: Text(
+                                      item.name,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 14,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            Text(
+                              _money(item.price),
+                              style: TextStyle(
+                                color: AppTheme.brandIndigo,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ],
+                        ),
+                        subtitle: Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  'SKU/Bar: ${item.barcode.trim().isNotEmpty ? item.barcode : item.id} • Cost: ${_money(item.costPrice ?? 0.0)}$expText$branchText',
+                                  style: const TextStyle(fontSize: 12),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Stock: ${item.stock}',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: item.stock <= item.minStock
+                                      ? AppTheme.brandRose
+                                      : AppTheme.brandEmerald,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        trailing: Icon(
+                          Icons.add_shopping_cart_rounded,
+                          color: colorScheme.primary,
+                        ),
+                        onTap: () {
+                          if (item.stock <= 0) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('This batch is out of stock!'),
+                                duration: Duration(seconds: 1),
+                              ),
+                            );
+                            return;
+                          }
+                          Navigator.pop(ctx);
+                          _showAddToCartQuantityDialog(item);
+                          _productSearchController.clear();
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  _ProductItem? _findProductByImei(String query) {
+    if (!_enableMobileShopFeatures) return null;
+    final trimmed = query.trim().toLowerCase();
+    if (trimmed.isEmpty) return null;
+    for (final p in _scopedProducts) {
+      if (p.imeis != null && p.imeis!.isNotEmpty) {
+        final imeisList = p.imeiList;
+        for (final imei in imeisList) {
+          if (imei.toLowerCase() == trimmed) {
+            return p;
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  void _addToCartWithImeiSelection(_ProductItem item, [String? imei]) {
+    final currentQty = _cart[item.id] ?? 0;
+    if (currentQty >= item.stock) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Cannot exceed available stock of ${item.stock}!'),
+          duration: const Duration(seconds: 1),
+        ),
+      );
+      return;
+    }
+
+    setState(() {
+      _cart[item.id] = currentQty + 1;
+
+      if (_enableMobileShopFeatures &&
+          item.imeis != null &&
+          item.imeis!.trim().isNotEmpty) {
+        final availableImeis = item.imeiList;
+        if (availableImeis.isNotEmpty) {
+          final currentSelected = _selectedCartImeis[item.id] ?? [];
+          final nextSelected = List<String>.from(currentSelected);
+
+          if (imei != null &&
+              availableImeis.contains(imei) &&
+              !nextSelected.contains(imei)) {
+            nextSelected.add(imei);
+          } else {
+            final unselected = availableImeis.firstWhere(
+              (x) => !nextSelected.contains(x),
+              orElse: () => '',
+            );
+            nextSelected.add(unselected);
+          }
+          _selectedCartImeis[item.id] = nextSelected;
+        }
+      }
+    });
+  }
+
+  void _decrementCartImei(_ProductItem item) {
+    setState(() {
+      final currentQty = _cart[item.id] ?? 0;
+      final next = currentQty - 1;
+      if (next <= 0) {
+        _removeTemporaryCartProducts([item.id]);
+        _cart.remove(item.id);
+        _selectedCartImeis.remove(item.id);
+      } else {
+        _cart[item.id] = next;
+        if (_enableMobileShopFeatures &&
+            _selectedCartImeis.containsKey(item.id)) {
+          final list = _selectedCartImeis[item.id]!;
+          if (list.isNotEmpty) {
+            list.removeLast();
+          }
+        }
+      }
+    });
+  }
+
+  void _removeCartImei(_ProductItem item) {
+    setState(() {
+      _removeTemporaryCartProducts([item.id]);
+      _cart.remove(item.id);
+      _selectedCartImeis.remove(item.id);
+    });
+  }
+
+  Future<void> _showEditCartQuantityDialog(_CartLine line) async {
+    final controller = TextEditingController(
+      text: line.qty.truncateToDouble() == line.qty
+          ? line.qty.toInt().toString()
+          : line.qty.toString(),
+    );
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: Text('Edit Quantity - ${line.product.name}'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: controller,
+                autofocus: true,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: InputDecoration(
+                  labelText: 'Quantity (${line.product.measureUnit})',
+                  border: const OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final val = double.tryParse(controller.text.trim());
+                if (val == null) return;
+                setState(() {
+                  if (val <= 0) {
+                    _removeCartImei(line.product);
+                  } else {
+                    _cart[line.product.id] = (val * 100).round() / 100.0;
+                  }
+                });
+                Navigator.pop(ctx);
+              },
+              child: const Text('Update'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  List<String> get _posAvailablePaymentMethods {
+    final list = ['CASH', 'CARD', 'CHEQUE', 'CREDIT', 'INSTALLMENT'];
+    if (_enableCod) {
+      list.add('COD');
+    }
+    return list;
+  }
+
+  double _calculateCurrentGrandTotal() {
+    final cartItems = _cart.entries
+        .map((e) {
+          final product = _resolveCartItemProduct(e.key);
+          if (product == null) return null;
+          final discount =
+              _posLineDiscounts[e.key] ?? _autoDiscountForProduct(product);
+          return _CartLine(
+            product: product,
+            qty: e.value,
+            discountValue: discount?.value ?? 0.0,
+            discountType: discount?.type ?? 'FIXED',
+            discountLabel: discount?.label ?? '',
+          );
+        })
+        .whereType<_CartLine>()
+        .toList();
+    final rawSubtotal = cartItems.fold<double>(0, (s, c) => s + c.totalPrice);
+    double invoiceDiscountAmount = 0.0;
+    if (_posInvoiceDiscountType == 'PERCENT') {
+      invoiceDiscountAmount = rawSubtotal * (_posInvoiceDiscountValue / 100);
+    } else {
+      invoiceDiscountAmount = _posInvoiceDiscountValue;
+    }
+    final subtotal = (rawSubtotal - invoiceDiscountAmount).clamp(
+      0.0,
+      double.infinity,
+    );
+
+    final taxRate = double.tryParse(_taxRate) ?? 0;
+    final taxAmount = _posApplyTax ? subtotal * (taxRate / 100) : 0.0;
+    final paymentMethod = _paymentMethodController.text.isEmpty
+        ? 'CASH'
+        : _paymentMethodController.text;
+    final isCodPayment = paymentMethod == 'COD';
+    final shippingCharges =
+        (_enableShippingCharges || isCodPayment) ? _posShippingCharges : 0.0;
+    return subtotal + taxAmount + shippingCharges;
+  }
+
+  void _focusPaymentMethod() {
+    if (!mounted) return;
+    _posPaymentMethodFocusNode.requestFocus();
+    if (_paymentMethodController.text.trim().isEmpty) {
+      final total = _calculateCurrentGrandTotal();
+      _applyPosPaymentMethod('CASH', total);
+    }
+    setState(() {});
+  }
+
+  void _cyclePaymentMethod(int step, double grandTotal) {
+    final methods = _posAvailablePaymentMethods;
+    if (methods.isEmpty) return;
+    final current = _paymentMethodController.text.trim().toUpperCase().isEmpty
+        ? 'CASH'
+        : _paymentMethodController.text.trim().toUpperCase();
+    int idx = methods.indexOf(current);
+    if (idx == -1) idx = 0;
+    int nextIdx = (idx + step) % methods.length;
+    if (nextIdx < 0) nextIdx += methods.length;
+    final nextMethod = methods[nextIdx];
+    _applyPosPaymentMethod(nextMethod, grandTotal);
+    setState(() {});
+  }
+
+  void _focusAmountPaid([double? total]) {
+    if (!mounted) return;
+    final grandTotal = total ?? _calculateCurrentGrandTotal();
+    final currentMethod = _paymentMethodController.text.trim().toUpperCase().isEmpty
+        ? 'CASH'
+        : _paymentMethodController.text.trim().toUpperCase();
+    final allowsManual = _allowsManualPaidAmount(currentMethod);
+
+    if (allowsManual) {
+      if (_amountPaidController.text.trim().isEmpty ||
+          _amountPaidController.text.trim() == '0' ||
+          _amountPaidController.text.trim() == '0.00') {
+        _amountPaidController.text = grandTotal.toStringAsFixed(2);
+      }
+      _amountPaidController.selection = TextSelection(
+        baseOffset: 0,
+        extentOffset: _amountPaidController.text.length,
+      );
+    } else {
+      _amountPaidController.text = grandTotal.toStringAsFixed(2);
+      _amountPaidController.selection = TextSelection(
+        baseOffset: 0,
+        extentOffset: _amountPaidController.text.length,
+      );
+    }
+    _amountPaidFocusNode.requestFocus();
+    setState(() {});
+  }
+
+  void _handlePosEnterKeyFlow() {
+    if (_cart.isEmpty) {
+      ScaffoldMessenger.of(context).clearSnackBars();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Cart එක හිස්ව පවතී. කරුණාකර භාණ්ඩ Cart එකට එක් කරන්න.'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+    _startPosCheckoutFlow();
+  }
+
+  Future<void> _startPosCheckoutFlow() async {
+    if (_isPosCheckoutProcessing) return;
+
+    final isAllLocations =
+        _selectedLocationScope == _DashboardScreenState._allLocationsLabel;
+    if (isAllLocations) {
+      await _showPosValidationGuideDialog(
+        title: 'Branch / Location Selection Required',
+        sinhalaTitle: 'අලෙවිසැල් ශාඛාව (Branch) තෝරන්න',
+        reason: 'ඔබ දැනට සිටින්නේ "All Locations" (සියලුම ශාඛා) බැලීමේ ආකාරයේය. තොග අඩු කිරීමට සහ මුදල් රෙජිස්ටරය නිවැරදිව පවත්වා ගැනීමට නිශ්චිත ශාඛාවක් තෝරාගත යුතුය.',
+        guide: 'ඉහළ ඇති Location dropdown එකෙන් ඔබගේ අලෙවිසැල් ශාඛාව (Branch) තෝරා ගන්න.',
+        icon: Icons.store_mall_directory_outlined,
+        color: Colors.deepOrange,
+      );
+      return;
+    }
+
+    final cartItems = _cart.entries
+        .map((e) {
+          final product = _resolveCartItemProduct(e.key);
+          if (product == null) return null;
+          final discount =
+              _posLineDiscounts[e.key] ?? _autoDiscountForProduct(product);
+          return _CartLine(
+            product: product,
+            qty: e.value,
+            discountValue: discount?.value ?? 0.0,
+            discountType: discount?.type ?? 'FIXED',
+            discountLabel: discount?.label ?? '',
+          );
+        })
+        .whereType<_CartLine>()
+        .toList();
+
+    if (cartItems.isEmpty) {
+      await _showPosValidationGuideDialog(
+        title: 'Cart is Empty',
+        sinhalaTitle: 'Cart එක හිස්ව පවතී',
+        reason: 'Checkout කිරීමට පෙර අවම වශයෙන් එක් භාණ්ඩයක් හෝ Cart එකට ඇතුළත් කළ යුතුය.',
+        guide: 'භාණ්ඩ ලැයිස්තුවෙන් හෝ Barcode Scanner එක මඟින් භාණ්ඩ Cart එකට එක් කරන්න.',
+        icon: Icons.shopping_cart_outlined,
+        color: Colors.amber.shade800,
+      );
+      return;
+    }
+
+    final activeSession = _activeSessionFor(_currentUserId);
+    if (activeSession == null) {
+      await _showPosValidationGuideDialog(
+        title: 'Cash Register Session Required',
+        sinhalaTitle: 'මුදල් රෙජිස්ටරය (Register) විවෘත කරන්න',
+        reason: 'විකිණුම් සිදුකිරීමට පෙර මුදල් රෙජිස්ටරය (Cashier Shift) ආරම්භ කර තිබිය යුතුය.',
+        guide: 'ඉහළ ඇති "Open Register" හෝ Shift බොත්තම ඔබා ආරම්භක මුදල ඇතුළත් කර Shift එක ආරම්භ කරන්න.',
+        icon: Icons.lock_clock_outlined,
+        color: Colors.blueAccent,
+        actionLabel: 'Open Register Now',
+        onAction: () => _triggerOpenRegisterDialog(),
+      );
+      return;
+    }
+
+    final confirmed = await _showPosCheckoutModalFlow();
+    if (confirmed == true && mounted) {
+      await _processPosCheckout();
+    }
+  }
+
+  Future<_CustomerItem?> _handleAddNewCustomerFromPos() async {
+    final customer = await _showCustomerDialog();
+    if (customer == null) return null;
+    customer.locationId = _activeLocationForWrites;
+
+    try {
+      setState(() {
+        _customers.removeWhere((item) => item.id == customer.id);
+        _customers.add(customer);
+        _selectedCustomerId = customer.id;
+        _posCustomerSearchController.text =
+            '${customer.name} (${customer.phone.isEmpty ? 'N/A' : customer.phone})';
+        if (customer.discountPercent > 0) {
+          _posInvoiceDiscountType = 'PERCENT';
+          _posInvoiceDiscountValue = customer.discountPercent;
+        }
+      });
+      await _persistWorkspaceData();
+
+      if (_customerRepository != null) {
+        try {
+          await _customerRepository!.insertCustomer(_toDomainCustomer(customer));
+        } catch (_) {
+          await _customerRepository!.updateCustomer(_toDomainCustomer(customer));
+        }
+        await _refreshPendingSyncQueue();
+        await _triggerImmediateSync(
+          action: 'INSERT',
+          module: 'customers',
+          reference: customer.id,
+        );
+      } else {
+        await _enqueueSync('INSERT', 'customers', customer.id);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Unable to add customer: $e')),
+        );
+      }
+    }
+    return customer;
+  }
+
+  Future<bool?> _showPosCheckoutModalFlow() async {
+    final availableMethods = _posAvailablePaymentMethods;
+    if (availableMethods.isEmpty) return false;
+
+    String currentMethod = _paymentMethodController.text.trim().toUpperCase();
+    if (!availableMethods.contains(currentMethod)) {
+      currentMethod = 'CASH';
+    }
+
+    final total = _calculateCurrentGrandTotal();
+    final TextEditingController modalPaidController = TextEditingController(
+      text: _amountPaidController.text.trim().isNotEmpty &&
+              double.tryParse(_amountPaidController.text.trim()) != null
+          ? _amountPaidController.text.trim()
+          : total.toStringAsFixed(2),
+    );
+    final TextEditingController modalCustomerSearchCtrl = TextEditingController();
+
+    // Steps:
+    // 0: Payment Method
+    // 1: Customer Prompt (Ow / Na? for Cash/Card/Cheque)
+    // 2: Customer Selection & Details (Search, Add New, COD rider, Credit limit)
+    // 3: Tender & Payment Amount (Amount paid, change)
+    // 4: Confirm Bill & Complete Sale
+    int currentStep = 0;
+    bool customerWasSkipped = false;
+
+    final FocusNode stepFocusNode = FocusNode();
+    final FocusNode paidInputFocus = FocusNode();
+
+    return showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dlgCtx) {
+        final isDark = Theme.of(dlgCtx).brightness == Brightness.dark;
+
+        return StatefulBuilder(
+          builder: (context, setDlgState) {
+            final grandTotal = _calculateCurrentGrandTotal();
+            final rawPaid = double.tryParse(modalPaidController.text.trim()) ?? 0.0;
+            final changeAmount = (rawPaid - grandTotal).clamp(0.0, double.infinity);
+            final dueAmount = (grandTotal - rawPaid).clamp(0.0, double.infinity);
+
+            final selectedCustomer = _selectedCustomerId == null
+                ? _CustomerItem(
+                    id: 'C001',
+                    name: 'Walk-in Customer',
+                    locationId: _activeLocationForWrites,
+                    phone: 'N/A',
+                    email: '',
+                  )
+                : _scopedCustomers.firstWhere(
+                    (c) => c.id == _selectedCustomerId,
+                    orElse: () => _CustomerItem(
+                      id: 'C001',
+                      name: 'Walk-in Customer',
+                      locationId: _activeLocationForWrites,
+                      phone: 'N/A',
+                      email: '',
+                    ),
+                  );
+
+            final isCreditOrCodOrInst =
+                currentMethod == 'CREDIT' || currentMethod == 'COD' || currentMethod == 'INSTALLMENT';
+
+            // Navigation helpers
+            void onMethodChosen() {
+              _applyPosPaymentMethod(currentMethod, grandTotal);
+
+              if (isCreditOrCodOrInst) {
+                // Customer is mandatory
+                customerWasSkipped = false;
+                setDlgState(() {
+                  currentStep = 2; // Jump straight to Customer Selection
+                });
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  stepFocusNode.requestFocus();
+                });
+              } else {
+                // Cash / Card / Cheque
+                if (_selectedCustomerId != null) {
+                  // Customer already selected -> go straight to Tender
+                  customerWasSkipped = false;
+                  setDlgState(() {
+                    currentStep = 3;
+                  });
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    paidInputFocus.requestFocus();
+                    modalPaidController.selection = TextSelection(
+                      baseOffset: 0,
+                      extentOffset: modalPaidController.text.length,
+                    );
+                  });
+                } else {
+                  // Ask "Customer kenek add karanawada? (Ow / Na)"
+                  setDlgState(() {
+                    currentStep = 1;
+                  });
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    stepFocusNode.requestFocus();
+                  });
+                }
+              }
+            }
+
+            void onCustomerPromptAnswer(bool wantsCustomer) {
+              if (wantsCustomer) {
+                customerWasSkipped = false;
+                setDlgState(() {
+                  currentStep = 2;
+                });
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  stepFocusNode.requestFocus();
+                });
+              } else {
+                customerWasSkipped = true;
+                setDlgState(() {
+                  currentStep = 3;
+                });
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  paidInputFocus.requestFocus();
+                  modalPaidController.selection = TextSelection(
+                    baseOffset: 0,
+                    extentOffset: modalPaidController.text.length,
+                  );
+                });
+              }
+            }
+
+            void onCustomerStepNext() {
+              if (isCreditOrCodOrInst && _selectedCustomerId == null) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('$currentMethod සඳහා කරුණාකර Customer කෙනෙක් තෝරන්න හෝ "+ Add New Customer" ඔබන්න.'),
+                    backgroundColor: Colors.deepOrange,
+                  ),
+                );
+                return;
+              }
+
+              // Set default paid based on method
+              if (currentMethod == 'CASH') {
+                if (modalPaidController.text.trim().isEmpty ||
+                    double.tryParse(modalPaidController.text.trim()) == null ||
+                    double.tryParse(modalPaidController.text.trim())! <= 0) {
+                  modalPaidController.text = grandTotal.toStringAsFixed(2);
+                }
+              } else if (currentMethod == 'CREDIT') {
+                modalPaidController.text = '0.00';
+              } else {
+                modalPaidController.text = grandTotal.toStringAsFixed(2);
+              }
+
+              setDlgState(() {
+                currentStep = 3;
+              });
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                paidInputFocus.requestFocus();
+                modalPaidController.selection = TextSelection(
+                  baseOffset: 0,
+                  extentOffset: modalPaidController.text.length,
+                );
+              });
+            }
+
+            void onTenderStepNext() {
+              final typed = double.tryParse(modalPaidController.text.trim());
+              if (currentMethod == 'CASH') {
+                if (typed == null || typed <= 0) {
+                  modalPaidController.text = grandTotal.toStringAsFixed(2);
+                }
+              }
+
+              _paymentMethodController.text = currentMethod;
+              _amountPaidController.text = modalPaidController.text.trim();
+
+              setDlgState(() {
+                currentStep = 4;
+              });
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                stepFocusNode.requestFocus();
+              });
+            }
+
+            void completeFinal() {
+              _paymentMethodController.text = currentMethod;
+              _amountPaidController.text = modalPaidController.text.trim();
+              Navigator.pop(dlgCtx, true);
+            }
+
+            void goBackOneStep() {
+              if (currentStep == 4) {
+                setDlgState(() => currentStep = 3);
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  paidInputFocus.requestFocus();
+                  modalPaidController.selection = TextSelection(
+                    baseOffset: 0,
+                    extentOffset: modalPaidController.text.length,
+                  );
+                });
+              } else if (currentStep == 3) {
+                if (customerWasSkipped) {
+                  setDlgState(() => currentStep = 1);
+                } else if (isCreditOrCodOrInst || _selectedCustomerId != null) {
+                  setDlgState(() => currentStep = 2);
+                } else {
+                  setDlgState(() => currentStep = 0);
+                }
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  stepFocusNode.requestFocus();
+                });
+              } else if (currentStep == 2) {
+                if (isCreditOrCodOrInst) {
+                  setDlgState(() => currentStep = 0);
+                } else {
+                  setDlgState(() => currentStep = 1);
+                }
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  stepFocusNode.requestFocus();
+                });
+              } else if (currentStep == 1) {
+                setDlgState(() => currentStep = 0);
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  stepFocusNode.requestFocus();
+                });
+              } else {
+                Navigator.pop(dlgCtx, false);
+              }
+            }
+
+            IconData getMethodIcon(String k) {
+              switch (k.toUpperCase()) {
+                case 'CASH':
+                  return Icons.payments_outlined;
+                case 'CARD':
+                  return Icons.credit_card_outlined;
+                case 'CHEQUE':
+                  return Icons.sticky_note_2_outlined;
+                case 'CREDIT':
+                  return Icons.badge_outlined;
+                case 'INSTALLMENT':
+                  return Icons.calendar_month_outlined;
+                case 'COD':
+                  return Icons.local_shipping_outlined;
+                default:
+                  return Icons.payment_outlined;
+              }
+            }
+
+            return Focus(
+              focusNode: stepFocusNode,
+              autofocus: true,
+              onKeyEvent: (node, event) {
+                if (event is! KeyDownEvent) return KeyEventResult.ignored;
+
+                if (event.logicalKey == LogicalKeyboardKey.escape) {
+                  goBackOneStep();
+                  return KeyEventResult.handled;
+                }
+
+                if (currentStep == 0) {
+                  // Step 0: Payment Method
+                  final currentIdx = availableMethods.indexOf(currentMethod);
+                  if (event.logicalKey == LogicalKeyboardKey.arrowRight ||
+                      event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                    final nextIdx = (currentIdx + 1) % availableMethods.length;
+                    setDlgState(() => currentMethod = availableMethods[nextIdx]);
+                    return KeyEventResult.handled;
+                  } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft ||
+                             event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                    final prevIdx = (currentIdx - 1 + availableMethods.length) % availableMethods.length;
+                    setDlgState(() => currentMethod = availableMethods[prevIdx]);
+                    return KeyEventResult.handled;
+                  } else if (event.logicalKey == LogicalKeyboardKey.digit1 && availableMethods.isNotEmpty) {
+                    setDlgState(() => currentMethod = availableMethods[0]);
+                    return KeyEventResult.handled;
+                  } else if (event.logicalKey == LogicalKeyboardKey.digit2 && availableMethods.length > 1) {
+                    setDlgState(() => currentMethod = availableMethods[1]);
+                    return KeyEventResult.handled;
+                  } else if (event.logicalKey == LogicalKeyboardKey.digit3 && availableMethods.length > 2) {
+                    setDlgState(() => currentMethod = availableMethods[2]);
+                    return KeyEventResult.handled;
+                  } else if (event.logicalKey == LogicalKeyboardKey.digit4 && availableMethods.length > 3) {
+                    setDlgState(() => currentMethod = availableMethods[3]);
+                    return KeyEventResult.handled;
+                  } else if (event.logicalKey == LogicalKeyboardKey.digit5 && availableMethods.length > 4) {
+                    setDlgState(() => currentMethod = availableMethods[4]);
+                    return KeyEventResult.handled;
+                  } else if (event.logicalKey == LogicalKeyboardKey.digit6 && availableMethods.length > 5) {
+                    setDlgState(() => currentMethod = availableMethods[5]);
+                    return KeyEventResult.handled;
+                  } else if (event.logicalKey == LogicalKeyboardKey.enter ||
+                             event.logicalKey == LogicalKeyboardKey.numpadEnter) {
+                    onMethodChosen();
+                    return KeyEventResult.handled;
+                  }
+                } else if (currentStep == 1) {
+                  // Step 1: Customer Prompt (Ow / Na?)
+                  if (event.logicalKey == LogicalKeyboardKey.enter ||
+                      event.logicalKey == LogicalKeyboardKey.numpadEnter ||
+                      event.logicalKey == LogicalKeyboardKey.keyN) {
+                    onCustomerPromptAnswer(false);
+                    return KeyEventResult.handled;
+                  } else if (event.logicalKey == LogicalKeyboardKey.keyY) {
+                    onCustomerPromptAnswer(true);
+                    return KeyEventResult.handled;
+                  }
+                } else if (currentStep == 2) {
+                  // Step 2: Customer Selection
+                  if (event.logicalKey == LogicalKeyboardKey.enter ||
+                      event.logicalKey == LogicalKeyboardKey.numpadEnter) {
+                    onCustomerStepNext();
+                    return KeyEventResult.handled;
+                  }
+                } else if (currentStep == 3) {
+                  // Step 3: Tender
+                  if (event.logicalKey == LogicalKeyboardKey.enter ||
+                      event.logicalKey == LogicalKeyboardKey.numpadEnter) {
+                    onTenderStepNext();
+                    return KeyEventResult.handled;
+                  }
+                } else if (currentStep == 4) {
+                  // Step 4: Confirm
+                  if (event.logicalKey == LogicalKeyboardKey.enter ||
+                      event.logicalKey == LogicalKeyboardKey.numpadEnter) {
+                    completeFinal();
+                    return KeyEventResult.handled;
+                  }
+                }
+
+                return KeyEventResult.ignored;
+              },
+              child: AlertDialog(
+                backgroundColor: isDark ? const Color(0xFF0F172A) : Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                titlePadding: const EdgeInsets.fromLTRB(20, 18, 20, 12),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                actionsPadding: const EdgeInsets.fromLTRB(20, 12, 20, 18),
+                title: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: AppTheme.brandIndigo.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Icon(
+                            currentStep == 0
+                                ? Icons.credit_card_rounded
+                                : currentStep == 1 || currentStep == 2
+                                    ? Icons.person_rounded
+                                    : currentStep == 3
+                                        ? Icons.point_of_sale_rounded
+                                        : Icons.task_alt_rounded,
+                            color: AppTheme.brandIndigo,
+                            size: 22,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                currentStep == 0
+                                    ? '1. Select Payment Method'
+                                    : currentStep == 1
+                                        ? '2. Add Customer? (පාරිභෝගිකයා)'
+                                        : currentStep == 2
+                                            ? '2. Customer Details (පාරිභෝගිකයා)'
+                                            : currentStep == 3
+                                                ? '3. Tender & Payment (ගෙවීම)'
+                                                : '4. Confirm & Complete Sale',
+                                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                              ),
+                              Text(
+                                currentStep == 0
+                                    ? 'ගෙවීම් ක්‍රමය තෝරා Enter ඔබන්න'
+                                    : currentStep == 1
+                                        ? 'බිල්පතට Customer කෙනෙකු එක් කරනවාද? නැත (Enter) / ඔව් (Y)'
+                                        : currentStep == 2
+                                            ? 'Customer තෝරා හෝ අලුතින් එක් කර Enter ඔබන්න'
+                                            : currentStep == 3
+                                                ? 'ගෙවූ මුදල (Amount Paid) තහවුරු කර Enter ඔබන්න'
+                                                : 'බිල්පත සම්පූර්ණ කර අවසන් කිරීමට Enter ඔබන්න',
+                                style: const TextStyle(fontSize: 11.5, color: Colors.grey),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+                            ),
+                          ),
+                          child: Text(
+                            _money(grandTotal),
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                              color: Color(0xFF6366F1),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    // Stepper chips
+                    Row(
+                      children: [
+                        _buildStepProgressChip('1. Payment', currentStep >= 0, currentStep == 0, isDark),
+                        const SizedBox(width: 6),
+                        _buildStepProgressDivider(currentStep >= 1, isDark),
+                        const SizedBox(width: 6),
+                        _buildStepProgressChip('2. Customer', currentStep >= 1, currentStep == 1 || currentStep == 2, isDark),
+                        const SizedBox(width: 6),
+                        _buildStepProgressDivider(currentStep >= 3, isDark),
+                        const SizedBox(width: 6),
+                        _buildStepProgressChip('3. Tender', currentStep >= 3, currentStep == 3, isDark),
+                        const SizedBox(width: 6),
+                        _buildStepProgressDivider(currentStep >= 4, isDark),
+                        const SizedBox(width: 6),
+                        _buildStepProgressChip('4. Confirm', currentStep >= 4, currentStep == 4, isDark),
+                      ],
+                    ),
+                  ],
+                ),
+                content: SizedBox(
+                  width: 530,
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 200),
+                    child: currentStep == 0
+                        ? _buildStep0PaymentMethods(
+                            methods: availableMethods,
+                            selected: currentMethod,
+                            grandTotal: grandTotal,
+                            isDark: isDark,
+                            onSelect: (m) {
+                              setDlgState(() => currentMethod = m);
+                              onMethodChosen();
+                            },
+                            getIcon: getMethodIcon,
+                          )
+                        : currentStep == 1
+                            ? _buildStep1CustomerPrompt(
+                                isDark: isDark,
+                                onSkip: () => onCustomerPromptAnswer(false),
+                                onAddCustomer: () => onCustomerPromptAnswer(true),
+                              )
+                            : currentStep == 2
+                                ? _buildStep2CustomerDetails(
+                                    currentMethod: currentMethod,
+                                    selectedCustomer: selectedCustomer,
+                                    isDark: isDark,
+                                    grandTotal: grandTotal,
+                                    searchController: modalCustomerSearchCtrl,
+                                    setDlgState: setDlgState,
+                                    onCustomerPicked: (c) {
+                                      setState(() {
+                                        _selectedCustomerId = c.id;
+                                        _posCustomerSearchController.text =
+                                            '${c.name} (${c.phone.isEmpty ? 'N/A' : c.phone})';
+                                      });
+                                      setDlgState(() {});
+                                    },
+                                    onAddNewCustomer: () async {
+                                      final c = await _handleAddNewCustomerFromPos();
+                                      if (c != null) {
+                                        setDlgState(() {});
+                                      }
+                                    },
+                                    onRemoveCustomer: () {
+                                      setState(() {
+                                        _selectedCustomerId = null;
+                                        _posCustomerSearchController.clear();
+                                      });
+                                      setDlgState(() {});
+                                    },
+                                  )
+                                : currentStep == 3
+                                    ? _buildStep3TenderInput(
+                                        method: currentMethod,
+                                        grandTotal: grandTotal,
+                                        paidController: modalPaidController,
+                                        paidInputFocus: paidInputFocus,
+                                        rawPaid: rawPaid,
+                                        changeAmount: changeAmount,
+                                        dueAmount: dueAmount,
+                                        isDark: isDark,
+                                        onExact: () {
+                                          modalPaidController.text = grandTotal.toStringAsFixed(2);
+                                          setDlgState(() {});
+                                        },
+                                        onChip: (val) {
+                                          modalPaidController.text = val.toStringAsFixed(2);
+                                          setDlgState(() {});
+                                        },
+                                        onSubmitted: (_) => onTenderStepNext(),
+                                        setDlgState: setDlgState,
+                                        selectedCustomer: selectedCustomer,
+                                      )
+                                    : _buildStep4BillConfirmation(
+                                        method: currentMethod,
+                                        grandTotal: grandTotal,
+                                        rawPaid: rawPaid,
+                                        changeAmount: changeAmount,
+                                        dueAmount: dueAmount,
+                                        isDark: isDark,
+                                        selectedCustomer: selectedCustomer,
+                                        cartItemCount: _cart.length,
+                                      ),
+                  ),
+                ),
+                actions: [
+                  TextButton.icon(
+                    onPressed: goBackOneStep,
+                    icon: Icon(
+                      currentStep > 0 ? Icons.arrow_back_rounded : Icons.close_rounded,
+                      size: 16,
+                    ),
+                    label: Text(
+                      currentStep > 0
+                          ? 'Back (Esc) • ආපසු'
+                          : 'Cancel (Esc) • අවලංගු කරන්න',
+                    ),
+                  ),
+                  if (currentStep == 0)
+                    ElevatedButton.icon(
+                      onPressed: onMethodChosen,
+                      icon: const Icon(Icons.arrow_forward_rounded, size: 16),
+                      label: const Text('Next (Enter) • ඉදිරියට'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.brandIndigo,
+                        foregroundColor: Colors.white,
+                      ),
+                    )
+                  else if (currentStep == 1)
+                    ElevatedButton.icon(
+                      onPressed: () => onCustomerPromptAnswer(false),
+                      icon: const Icon(Icons.flash_on_rounded, size: 16),
+                      label: const Text('Skip (Enter) • නැත'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.brandIndigo,
+                        foregroundColor: Colors.white,
+                      ),
+                    )
+                  else if (currentStep == 2)
+                    ElevatedButton.icon(
+                      onPressed: onCustomerStepNext,
+                      icon: const Icon(Icons.arrow_forward_rounded, size: 16),
+                      label: const Text('Next: Tender (Enter) • ඉදිරියට'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.brandIndigo,
+                        foregroundColor: Colors.white,
+                      ),
+                    )
+                  else if (currentStep == 3)
+                    ElevatedButton.icon(
+                      onPressed: onTenderStepNext,
+                      icon: const Icon(Icons.arrow_forward_rounded, size: 16),
+                      label: const Text('Next: Confirm (Enter) • ඉදිරියට'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.brandIndigo,
+                        foregroundColor: Colors.white,
+                      ),
+                    )
+                  else
+                    ElevatedButton.icon(
+                      onPressed: completeFinal,
+                      icon: const Icon(Icons.check_circle_outline_rounded, size: 18),
+                      label: Text('Complete Sale (Enter) • ${_money(grandTotal)}'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF10B981),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                        textStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                      ),
+                    ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildStepProgressChip(String label, bool isCompleted, bool isActive, bool isDark) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 5, horizontal: 4),
+        decoration: BoxDecoration(
+          color: isActive
+              ? AppTheme.brandIndigo.withValues(alpha: 0.15)
+              : isCompleted
+                  ? (isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9))
+                  : Colors.transparent,
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(
+            color: isActive
+                ? AppTheme.brandIndigo
+                : isCompleted
+                    ? (isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1))
+                    : (isDark ? Colors.white10 : Colors.black12),
+          ),
+        ),
+        child: Text(
+          label,
+          textAlign: TextAlign.center,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: 10,
+            fontWeight: isActive ? FontWeight.bold : FontWeight.w500,
+            color: isActive
+                ? AppTheme.brandIndigo
+                : (isDark ? Colors.grey.shade400 : const Color(0xFF475569)),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStepProgressDivider(bool isCompleted, bool isDark) {
+    return Container(
+      width: 10,
+      height: 2,
+      color: isCompleted
+          ? AppTheme.brandIndigo
+          : (isDark ? Colors.white12 : Colors.black12),
+    );
+  }
+
+  Widget _buildStep0PaymentMethods({
+    required List<String> methods,
+    required String selected,
+    required double grandTotal,
+    required bool isDark,
+    required ValueChanged<String> onSelect,
+    required IconData Function(String) getIcon,
+  }) {
+    return Column(
+      key: const ValueKey(0),
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'තෝරාගැනීමට Arrow keys (← → ↑ ↓) හෝ අංක (1-6) ඔබන්න:',
+          style: TextStyle(fontSize: 12, color: Colors.grey),
+        ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: [
+            for (int i = 0; i < methods.length; i++)
+              () {
+                final m = methods[i];
+                final isSel = m == selected;
+                return InkWell(
+                  onTap: () => onSelect(m),
+                  borderRadius: BorderRadius.circular(10),
+                  child: Container(
+                    width: 155,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: isSel
+                          ? (isDark
+                              ? AppTheme.brandIndigo.withValues(alpha: 0.25)
+                              : AppTheme.brandIndigo.withValues(alpha: 0.12))
+                          : (isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC)),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: isSel
+                            ? AppTheme.brandIndigo
+                            : (isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0)),
+                        width: isSel ? 2 : 1,
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: isSel
+                                ? AppTheme.brandIndigo.withValues(alpha: 0.2)
+                                : (isDark ? Colors.white10 : Colors.black.withValues(alpha: 0.05)),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Icon(
+                            getIcon(m),
+                            size: 18,
+                            color: isSel ? AppTheme.brandIndigo : Colors.grey,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Text(
+                                    '${i + 1}. ',
+                                    style: TextStyle(
+                                      fontSize: 10.5,
+                                      fontWeight: FontWeight.bold,
+                                      color: isSel ? AppTheme.brandIndigo : Colors.grey,
+                                    ),
+                                  ),
+                                  Expanded(
+                                    child: Text(
+                                      m,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 12.5,
+                                        fontWeight: isSel ? FontWeight.bold : FontWeight.w600,
+                                        color: isSel
+                                            ? (isDark ? Colors.white : AppTheme.brandIndigo)
+                                            : null,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              if (isSel)
+                                const Text(
+                                  'Selected (තෝරා ඇත)',
+                                  style: TextStyle(fontSize: 10, color: Color(0xFF10B981), fontWeight: FontWeight.bold),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }(),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStep1CustomerPrompt({
+    required bool isDark,
+    required VoidCallback onSkip,
+    required VoidCallback onAddCustomer,
+  }) {
+    return Column(
+      key: const ValueKey(1),
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+            ),
+          ),
+          child: Column(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppTheme.brandIndigo.withValues(alpha: 0.12),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.person_add_alt_1_rounded,
+                  size: 32,
+                  color: AppTheme.brandIndigo,
+                ),
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'Add Customer to this Bill?',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'බිල්පතට පාරිභෝගිකයෙකුගේ තොරතුරු සම්බන්ධ කරනවාද?',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 12.5, color: Colors.grey),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      autofocus: true,
+                      onPressed: onSkip,
+                      icon: const Icon(Icons.flash_on_rounded, size: 16),
+                      label: const Text('නැත (Walk-in) [Enter]'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.brandIndigo,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: onAddCustomer,
+                      icon: const Icon(Icons.person_search_rounded, size: 16),
+                      label: const Text('ඔව් (Add Customer) [Y]'),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStep2CustomerDetails({
+    required String currentMethod,
+    required _CustomerItem selectedCustomer,
+    required bool isDark,
+    required double grandTotal,
+    required TextEditingController searchController,
+    required StateSetter setDlgState,
+    required ValueChanged<_CustomerItem> onCustomerPicked,
+    required VoidCallback onAddNewCustomer,
+    required VoidCallback onRemoveCustomer,
+  }) {
+    final bool hasCustomer = _selectedCustomerId != null;
+    final double outstanding = hasCustomer ? _customerOutstandingBalance(selectedCustomer.id) : 0.0;
+    final oldestOverdue = hasCustomer ? _oldestOverdueDateForCustomer(selectedCustomer) : null;
+    final bool hasOverdue = oldestOverdue != null;
+
+    final query = searchController.text.trim().toLowerCase();
+    final matchingCustomers = query.isEmpty
+        ? _scopedCustomers.take(5).toList()
+        : _scopedCustomers.where((c) =>
+            c.name.toLowerCase().contains(query) ||
+            c.phone.toLowerCase().contains(query) ||
+            c.id.toLowerCase().contains(query)).take(5).toList();
+
+    return Column(
+      key: const ValueKey(2),
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (!hasCustomer) ...[
+          // Search input & Add Customer row
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: searchController,
+                  autofocus: true,
+                  decoration: InputDecoration(
+                    labelText: 'Search Customer (නම, දුරකථන, ID)',
+                    hintText: 'Customer සෙවීමට type කරන්න...',
+                    prefixIcon: const Icon(Icons.search, size: 20),
+                    isDense: true,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  onChanged: (_) => setDlgState(() {}),
+                ),
+              ),
+              const SizedBox(width: 8),
+              ElevatedButton.icon(
+                onPressed: onAddNewCustomer,
+                icon: const Icon(Icons.person_add_alt_1_rounded, size: 16),
+                label: const Text('+ Add New'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF6366F1),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          // Matches list
+          Container(
+            constraints: const BoxConstraints(maxHeight: 180),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+              ),
+            ),
+            child: matchingCustomers.isEmpty
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.person_off_outlined, color: Colors.grey, size: 28),
+                          const SizedBox(height: 6),
+                          Text(
+                            query.isEmpty ? 'No customers found.' : 'No customer matches "$query".',
+                            style: const TextStyle(fontSize: 12, color: Colors.grey),
+                          ),
+                          const SizedBox(height: 6),
+                          TextButton.icon(
+                            onPressed: onAddNewCustomer,
+                            icon: const Icon(Icons.add, size: 14),
+                            label: const Text('Add as New Customer', style: TextStyle(fontSize: 12)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                : ListView.separated(
+                    shrinkWrap: true,
+                    padding: EdgeInsets.zero,
+                    itemCount: matchingCustomers.length,
+                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    itemBuilder: (context, index) {
+                      final c = matchingCustomers[index];
+                      return ListTile(
+                        dense: true,
+                        leading: CircleAvatar(
+                          radius: 14,
+                          backgroundColor: AppTheme.brandIndigo.withValues(alpha: 0.15),
+                          child: Text(
+                            c.name.isNotEmpty ? c.name[0].toUpperCase() : '?',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: AppTheme.brandIndigo,
+                            ),
+                          ),
+                        ),
+                        title: Text(c.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                        subtitle: Text(
+                          '${c.phone.isNotEmpty ? c.phone : 'No Phone'} • ${c.address.isNotEmpty ? c.address : 'No Address'}',
+                          style: const TextStyle(fontSize: 11, color: Colors.grey),
+                        ),
+                        trailing: const Icon(Icons.check_circle_outline, size: 18, color: Colors.grey),
+                        onTap: () => onCustomerPicked(c),
+                      );
+                    },
+                  ),
+          ),
+        ] else ...[
+          // Selected customer card
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.person_rounded, size: 18, color: Color(0xFF10B981)),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            selectedCustomer.name,
+                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                          ),
+                          Text(
+                            'Phone: ${selectedCustomer.phone.isEmpty ? 'N/A' : selectedCustomer.phone} • ID: ${selectedCustomer.id}',
+                            style: const TextStyle(fontSize: 11.5, color: Colors.grey),
+                          ),
+                        ],
+                      ),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: onRemoveCustomer,
+                      icon: const Icon(Icons.swap_horiz_rounded, size: 14),
+                      label: const Text('Change', style: TextStyle(fontSize: 11)),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                    ),
+                  ],
+                ),
+                if (selectedCustomer.address.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    'Address: ${selectedCustomer.address}',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      color: isDark ? Colors.grey.shade400 : const Color(0xFF64748B),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Text(
+                      'Outstanding Credit: ${_money(outstanding)}',
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w600,
+                        color: outstanding > 0 ? const Color(0xFFE11D48) : null,
+                      ),
+                    ),
+                    Text(
+                      ' • Limit: ${selectedCustomer.creditLimit <= 0 ? 'No limit' : _money(selectedCustomer.creditLimit)}',
+                      style: const TextStyle(fontSize: 11.5, color: Colors.grey),
+                    ),
+                  ],
+                ),
+                if (hasOverdue) ...[
+                  const SizedBox(height: 6),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFEFEF),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: const Color(0xFFF2B6B6)),
+                    ),
+                    child: const Text(
+                      'Overdue credit detected. Clear overdue balance before creating new credit sale.',
+                      style: TextStyle(color: Color(0xFFB43E3E), fontWeight: FontWeight.bold, fontSize: 11),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+
+        // Method-Specific controls inside Customer step
+        if (currentMethod == 'COD') ...[
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFF7ED),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: const Color(0xFFFDBA74)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: const [
+                    Icon(Icons.local_shipping_outlined, color: Color(0xFFEA580C), size: 18),
+                    SizedBox(width: 6),
+                    Text(
+                      'COD Delivery Rider Assignment',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5, color: Color(0xFF9A3412)),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                () {
+                  final activeDrivers = _users
+                      .where((u) => u.active && u.role.toLowerCase() == 'driver')
+                      .toList();
+                  return DropdownButtonFormField<String>(
+                    value: _posSelectedDeliveryDriverId,
+                    isExpanded: true,
+                    decoration: InputDecoration(
+                      labelText: 'Assign Delivery Driver',
+                      isDense: true,
+                      fillColor: Colors.white,
+                      filled: true,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
+                    ),
+                    items: [
+                      const DropdownMenuItem(
+                        value: null,
+                        child: Text('Unassigned (පසුව බාරදෙන්න)', style: TextStyle(fontSize: 12)),
+                      ),
+                      ...activeDrivers.map((driver) {
+                        return DropdownMenuItem(
+                          value: driver.id,
+                          child: Text(driver.name, style: const TextStyle(fontSize: 12)),
+                        );
+                      }),
+                    ],
+                    onChanged: (val) {
+                      setDlgState(() {
+                        _posSelectedDeliveryDriverId = val;
+                      });
+                    },
+                  );
+                }(),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    Checkbox(
+                      value: _posCodPaymentCollectedUpfront,
+                      activeColor: const Color(0xFFEA580C),
+                      onChanged: (val) {
+                        setDlgState(() {
+                          _posCodPaymentCollectedUpfront = val ?? false;
+                        });
+                      },
+                    ),
+                    const Expanded(
+                      child: Text(
+                        'Payment collected upfront (දැනටමත් මුදල් ගෙවා ඇත)',
+                        style: TextStyle(fontSize: 11.5, color: Color(0xFF9A3412), fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ] else if (currentMethod == 'CREDIT') ...[
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFEFF6FF),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: const Color(0xFF93C5FD)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.account_balance_wallet_outlined, color: Color(0xFF2563EB), size: 18),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Bill amount ${_money(grandTotal)} will be debited to ${selectedCustomer.name}\'s credit ledger.',
+                    style: const TextStyle(fontSize: 11.5, color: Color(0xFF1E40AF), fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildStep3TenderInput({
+    required String method,
+    required double grandTotal,
+    required TextEditingController paidController,
+    required FocusNode paidInputFocus,
+    required double rawPaid,
+    required double changeAmount,
+    required double dueAmount,
+    required bool isDark,
+    required VoidCallback onExact,
+    required ValueChanged<double> onChip,
+    required ValueChanged<String> onSubmitted,
+    required StateSetter setDlgState,
+    required _CustomerItem selectedCustomer,
+  }) {
+    final allowsManual = _allowsManualPaidAmount(method);
+
+    return Column(
+      key: const ValueKey(3),
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: AppTheme.brandIndigo.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: AppTheme.brandIndigo.withValues(alpha: 0.3)),
+                      ),
+                      child: Text(
+                        method,
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12,
+                          color: AppTheme.brandIndigo,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      '• ${selectedCustomer.name}',
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                const Text('Bill Grand Total', style: TextStyle(fontSize: 11.5, color: Colors.grey)),
+                Text(
+                  _money(grandTotal),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 18,
+                    color: Color(0xFF6366F1),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+
+        if (allowsManual) ...[
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: paidController,
+                  focusNode: paidInputFocus,
+                  autofocus: true,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  decoration: InputDecoration(
+                    labelText: 'Amount Paid (ගෙවූ මුදල)',
+                    prefixText: 'LKR ',
+                    hintText: grandTotal.toStringAsFixed(2),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    suffixIcon: IconButton(
+                      icon: const Icon(Icons.clear, size: 16),
+                      onPressed: () {
+                        paidController.clear();
+                        setDlgState(() {});
+                      },
+                    ),
+                  ),
+                  onChanged: (_) => setDlgState(() {}),
+                  onSubmitted: onSubmitted,
+                ),
+              ),
+              const SizedBox(width: 8),
+              ElevatedButton(
+                onPressed: onExact,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.brandIndigo,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 15),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                child: const Text('Exact Cash', style: TextStyle(fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 6,
+            runSpacing: 4,
+            children: [
+              for (final chipAmount in [100.0, 500.0, 1000.0, 5000.0, 10000.0])
+                ActionChip(
+                  label: Text('Rs. ${chipAmount.toInt()}'),
+                  labelStyle: const TextStyle(fontSize: 11.5),
+                  padding: EdgeInsets.zero,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  onPressed: () => onChip(chipAmount),
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: rawPaid >= grandTotal
+                  ? (isDark ? const Color(0xFF064E3B) : const Color(0xFFECFDF5))
+                  : (isDark ? const Color(0xFF451A03) : const Color(0xFFFFFBEB)),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: rawPaid >= grandTotal
+                    ? const Color(0xFF10B981).withValues(alpha: 0.5)
+                    : const Color(0xFFF59E0B).withValues(alpha: 0.5),
+              ),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      rawPaid >= grandTotal
+                          ? Icons.change_circle_rounded
+                          : Icons.pending_actions_rounded,
+                      color: rawPaid >= grandTotal
+                          ? const Color(0xFF10B981)
+                          : const Color(0xFFF59E0B),
+                      size: 20,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      rawPaid >= grandTotal
+                          ? 'Change to Return (ඉතිරි මුදල):'
+                          : 'Due / Balance (හිඟ මුදල):',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        color: rawPaid >= grandTotal
+                            ? const Color(0xFF10B981)
+                            : const Color(0xFFF59E0B),
+                      ),
+                    ),
+                  ],
+                ),
+                Text(
+                  rawPaid >= grandTotal ? _money(changeAmount) : _money(dueAmount),
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                    color: rawPaid >= grandTotal
+                        ? const Color(0xFF10B981)
+                        : const Color(0xFFF59E0B),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ] else ...[
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (method == 'CHEQUE') ...[
+                  TextField(
+                    controller: _chequeNumberController,
+                    autofocus: true,
+                    decoration: InputDecoration(
+                      labelText: 'Cheque Number (චෙක්පත් අංකය)',
+                      isDense: true,
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    onSubmitted: onSubmitted,
+                  ),
+                ] else if (method == 'CREDIT') ...[
+                  Row(
+                    children: [
+                      const Icon(Icons.badge_outlined, size: 16, color: Color(0xFF2563EB)),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Customer: ${selectedCustomer.name}',
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Full amount ${_money(grandTotal)} will be added to credit balance.',
+                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                ] else if (method == 'COD') ...[
+                  Text(
+                    'COD Order for ${selectedCustomer.name}. Total: ${_money(grandTotal)}',
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _posCodPaymentCollectedUpfront
+                        ? 'Payment collected upfront (${_money(grandTotal)} paid)'
+                        : 'Cash to be collected upon delivery by rider.',
+                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                ] else ...[
+                  Text(
+                    'Direct payment of ${_money(grandTotal)} via $method.',
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildStep4BillConfirmation({
+    required String method,
+    required double grandTotal,
+    required double rawPaid,
+    required double changeAmount,
+    required double dueAmount,
+    required bool isDark,
+    required _CustomerItem selectedCustomer,
+    required int cartItemCount,
+  }) {
+    return Column(
+      key: const ValueKey(4),
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+            ),
+          ),
+          child: Column(
+            children: [
+              _buildSummaryRow('Customer', selectedCustomer.name, isDark),
+              if (selectedCustomer.phone.isNotEmpty && selectedCustomer.phone != 'N/A')
+                _buildSummaryRow('Phone', selectedCustomer.phone, isDark),
+              const Divider(height: 12),
+              _buildSummaryRow('Items in Cart', '$cartItemCount items', isDark),
+              const Divider(height: 12),
+              _buildSummaryRow('Payment Method', method, isDark, boldValue: true),
+              const Divider(height: 12),
+              _buildSummaryRow('Grand Total', _money(grandTotal), isDark,
+                  boldValue: true, valueColor: const Color(0xFF6366F1), valueSize: 15),
+              const Divider(height: 12),
+              _buildSummaryRow('Amount Paid', _money(rawPaid > 0 ? rawPaid : grandTotal), isDark),
+              if (method == 'CASH' && changeAmount > 0) ...[
+                const Divider(height: 12),
+                _buildSummaryRow('Change to Return (ඉතිරි)', _money(changeAmount), isDark,
+                    boldValue: true, valueColor: const Color(0xFF10B981), valueSize: 15),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: const Color(0xFF10B981).withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: const Color(0xFF10B981).withValues(alpha: 0.3)),
+          ),
+          child: const Row(
+            children: [
+              Icon(Icons.info_outline_rounded, color: Color(0xFF10B981), size: 18),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'මෙම බිල්පත සම්පූර්ණ කර අවසන් කිරීමට "Complete Sale (Enter)" ඔබන්න.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF059669),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSummaryRow(
+    String label,
+    String value,
+    bool isDark, {
+    bool boldValue = false,
+    Color? valueColor,
+    double valueSize = 13,
+  }) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 12.5,
+            color: isDark ? Colors.grey.shade400 : const Color(0xFF64748B),
+          ),
+        ),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: valueSize,
+            fontWeight: boldValue ? FontWeight.bold : FontWeight.w600,
+            color: valueColor ?? (isDark ? Colors.white : const Color(0xFF0F172A)),
+          ),
+        ),
+      ],
+    );
+  }
+
+  static bool _isPosCheckoutProcessing = false;
+
+  Future<void> _processPosCheckout() async {
+    if (_isPosCheckoutProcessing) return;
+    _isPosCheckoutProcessing = true;
+    try {
+      final isAllLocations =
+          _selectedLocationScope == _DashboardScreenState._allLocationsLabel;
+
+      if (isAllLocations) {
+        await _showPosValidationGuideDialog(
+          title: 'Branch / Location Selection Required',
+          sinhalaTitle: 'අලෙවිසැල් ශාඛාව (Branch) තෝරන්න',
+          reason: 'ඔබ දැනට සිටින්නේ "All Locations" (සියලුම ශාඛා) බැලීමේ ආකාරයේය. තොග අඩු කිරීමට සහ මුදල් රෙජිස්ටරය නිවැරදිව පවත්වා ගැනීමට නිශ්චිත ශාඛාවක් තෝරාගත යුතුය.',
+          guide: 'ඉහළ ඇති Location dropdown එකෙන් ඔබගේ අලෙවිසැල් ශාඛාව (Branch) තෝරා ගන්න.',
+          icon: Icons.store_mall_directory_outlined,
+          color: Colors.deepOrange,
+        );
+        return;
+      }
+
+      final cartItems = _cart.entries
+          .map((e) {
+            final product = _resolveCartItemProduct(e.key);
+            if (product == null) return null;
+            final discount =
+                _posLineDiscounts[e.key] ?? _autoDiscountForProduct(product);
+            return _CartLine(
+              product: product,
+              qty: e.value,
+              discountValue: discount?.value ?? 0.0,
+              discountType: discount?.type ?? 'FIXED',
+              discountLabel: discount?.label ?? '',
+            );
+          })
+          .whereType<_CartLine>()
+          .toList();
+
+      if (cartItems.isEmpty) {
+        await _showPosValidationGuideDialog(
+          title: 'Cart is Empty',
+          sinhalaTitle: 'Cart එක හිස්ව පවතී',
+          reason: 'Checkout කිරීමට පෙර අවම වශයෙන් එක් භාණ්ඩයක් හෝ Cart එකට ඇතුළත් කළ යුතුය.',
+          guide: 'භාණ්ඩ ලැයිස්තුවෙන් හෝ Barcode Scanner එක මඟින් භාණ්ඩ Cart එකට එක් කරන්න.',
+          icon: Icons.shopping_cart_outlined,
+          color: Colors.amber.shade800,
+        );
+        return;
+      }
+
+      final rawSubtotal = cartItems.fold<double>(0, (s, c) => s + c.totalPrice);
+      double invoiceDiscountAmount = 0.0;
+      if (_posInvoiceDiscountType == 'PERCENT') {
+        invoiceDiscountAmount = rawSubtotal * (_posInvoiceDiscountValue / 100);
+      } else {
+        invoiceDiscountAmount = _posInvoiceDiscountValue;
+      }
+      final subtotal = (rawSubtotal - invoiceDiscountAmount).clamp(
+        0.0,
+        double.infinity,
+      );
+
+      final taxRate = double.tryParse(_taxRate) ?? 0;
+      final taxAmount = _posApplyTax ? subtotal * (taxRate / 100) : 0.0;
+      final paymentMethod = _paymentMethodController.text.isEmpty
+          ? 'CASH'
+          : _paymentMethodController.text;
+      final isCodPayment = paymentMethod == 'COD';
+      final shippingCharges =
+          (_enableShippingCharges || isCodPayment) ? _posShippingCharges : 0.0;
+      final grandTotal = subtotal + taxAmount + shippingCharges;
+      final isChequePayment = paymentMethod == 'CHEQUE';
+      final isInstallmentPayment = paymentMethod == 'INSTALLMENT';
+
+      final selectedCustomer = _selectedCustomerId == null
+          ? _CustomerItem(
+              id: 'C001',
+              name: 'Walk-in Customer',
+              locationId: _activeLocationForWrites,
+              phone: 'N/A',
+              email: '',
+            )
+          : _scopedCustomers.firstWhere(
+              (c) => c.id == _selectedCustomerId,
+              orElse: () => _CustomerItem(
+                id: 'C001',
+                name: 'Walk-in Customer',
+                locationId: _activeLocationForWrites,
+                phone: 'N/A',
+                email: '',
+              ),
+            );
+      final selectedCustomerOutstanding =
+          _customerOutstandingBalance(selectedCustomer.id);
+
+      final installmentCount = _posInstallmentCount.clamp(1, 60).toInt();
+      final installmentIntervalDays =
+          _posInstallmentIntervalDays.clamp(1, 365).toInt();
+
+
                           if (isAllLocations) {
                             await _showPosValidationGuideDialog(
                               title: 'Branch / Location Selection Required',
@@ -5142,11 +7278,20 @@ extension _point_of_saleExt on _DashboardScreenState {
                                 final chequeNumber = _chequeNumberController
                                     .text
                                     .trim();
-                                final paidAmount =
-                                    double.tryParse(
-                                      _amountPaidController.text.trim(),
-                                    ) ??
-                                    0;
+                                final rawPaidText =
+                                    _amountPaidController.text.trim();
+                                final parsedPaid =
+                                    double.tryParse(rawPaidText);
+                                final double paidAmount;
+                                if (paymentMethod == 'CASH' &&
+                                    (rawPaidText.isEmpty ||
+                                        parsedPaid == null ||
+                                        parsedPaid == 0)) {
+                                  // Cashier hasn't manually entered custom cash tender -> default to exact cash!
+                                  paidAmount = grandTotal;
+                                } else {
+                                  paidAmount = parsedPaid ?? 0.0;
+                                }
                                 final sanitizedPaidAmount =
                                     paymentMethod == 'COD'
                                         ? (_posCodPaymentCollectedUpfront
@@ -6333,1198 +8478,378 @@ extension _point_of_saleExt on _DashboardScreenState {
                                      ),
                                    );
                                  } catch (_) {}
-                              },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.transparent,
-                          foregroundColor: Colors.white,
-                          shadowColor: Colors.transparent,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(UiRadius.md),
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              _editingSaleId != null
-                                  ? Icons.save_rounded
-                                  : Icons.check_circle_outline_rounded,
-                              size: 20,
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              _editingSaleId != null
-                                  ? 'Update Bill • ${_money(grandTotal)}'
-                                  : 'Complete Sale • ${_money(grandTotal)}',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w700,
-                                fontSize: 15,
-                                letterSpacing: 0.3,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              );
 
-              if (isCompact) {
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    productPanel,
-                    const SizedBox(height: 12),
-                    cartPanel,
-                  ],
-                );
-              }
-              return Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(flex: 5, child: productPanel),
-                  const SizedBox(width: 16),
-                  Expanded(flex: 4, child: cartPanel),
-                ],
-              );
-            },
-          ),
-        ],
-      ),
-    );
-
-    if (activeSession == null) {
-      return Stack(
-        children: [
-          AbsorbPointer(
-            absorbing: true,
-            child: Opacity(opacity: 0.35, child: mainContent),
-          ),
-          Positioned.fill(
-            child: Container(
-              color: Colors.black.withOpacity(0.4),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 8.0, sigmaY: 8.0),
-                child: Center(
-                  child: Container(
-                    width: ResponsiveLayout.adaptiveDialogWidth(context, 480),
-                    margin: const EdgeInsets.all(20),
-                    padding: const EdgeInsets.all(32),
-                    decoration: BoxDecoration(
-                      color: isDark
-                          ? const Color(0xFF1E1B29).withOpacity(0.92)
-                          : Colors.white.withOpacity(0.95),
-                      borderRadius: BorderRadius.circular(24),
-                      border: Border.all(
-                        color: pendingSession != null
-                            ? Colors.amber.withOpacity(0.4)
-                            : Colors.purple.withOpacity(0.3),
-                        width: 1.5,
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.35),
-                          blurRadius: 24,
-                          offset: const Offset(0, 8),
-                        ),
-                      ],
-                    ),
-                    child: pendingSession != null
-                        ? Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(16),
-                                decoration: BoxDecoration(
-                                  color: Colors.amber.withOpacity(0.15),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Icon(
-                                  Icons.hourglass_top_rounded,
-                                  color: Colors.amber,
-                                  size: 48,
-                                ),
-                              ),
-                              const SizedBox(height: 20),
-                              const Text(
-                                'Shift Close Pending Approval',
-                                style: TextStyle(
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: -0.5,
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              Text(
-                                'Your shift close request has been submitted to Admin.\n\nCounted Cash: ${_money(pendingSession.actualCash ?? 0.0)}\nExpected Cash: ${_money(pendingSession.expectedCash)}\n\nPlease wait until Admin approves or verifies the shift before starting a new one.',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  fontSize: 13.5,
-                                  color: isDark ? Colors.white70 : Colors.black87,
-                                  height: 1.45,
-                                ),
-                              ),
-                              const SizedBox(height: 24),
-                              if (_isOwner || _isAdmin) ...[
-                                FilledButton.icon(
-                                  style: FilledButton.styleFrom(
-                                    backgroundColor: const Color(0xFF10B981),
-                                    minimumSize: const Size(double.infinity, 46),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                  ),
-                                  icon: const Icon(Icons.check_circle_outline, size: 18),
-                                  label: const Text(
-                                    'Admin: Verify & Approve Now',
-                                    style: TextStyle(fontWeight: FontWeight.bold),
-                                  ),
-                                  onPressed: () async {
-                                    await _approveCloseSession(pendingSession);
-                                    if (mounted) setState(() {});
-                                  },
-                                ),
-                                const SizedBox(height: 10),
-                              ],
-                              OutlinedButton.icon(
-                                style: OutlinedButton.styleFrom(
-                                  minimumSize: const Size(double.infinity, 44),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                ),
-                                icon: const Icon(Icons.refresh_rounded, size: 16),
-                                label: const Text('Refresh Status'),
-                                onPressed: () {
-                                  setState(() {});
-                                },
-                              ),
-                            ],
-                          )
-                        : Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(16),
-                                decoration: BoxDecoration(
-                                  color: Colors.purple.withOpacity(0.12),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Icon(
-                                  Icons.point_of_sale_rounded,
-                                  color: Colors.purple,
-                                  size: 48,
-                                ),
-                              ),
-                              const SizedBox(height: 20),
-                              const Text(
-                                'Open Cashier Shift Required',
-                                style: TextStyle(
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: -0.5,
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              Text(
-                                'You must open a cashier shift with a starting cash float (Plot) to perform POS sales transactions.',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: isDark ? Colors.white70 : Colors.black87,
-                                  height: 1.4,
-                                ),
-                              ),
-                              const SizedBox(height: 28),
-                              Container(
-                                width: double.infinity,
-                                height: 50,
-                                decoration: BoxDecoration(
-                                  gradient: UiGradients.brand,
-                                  borderRadius: BorderRadius.circular(14),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.purple.withOpacity(0.3),
-                                      blurRadius: 12,
-                                      offset: const Offset(0, 4),
-                                    ),
-                                  ],
-                                ),
-                                child: ElevatedButton.icon(
-                                  onPressed: _triggerOpenRegisterDialog,
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.transparent,
-                                    shadowColor: Colors.transparent,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(14),
-                                    ),
-                                  ),
-                                  icon: const Icon(Icons.lock_open_rounded, color: Colors.white),
-                                  label: const Text(
-                                    'Open Cashier Shift',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      );
+    } finally {
+      _isPosCheckoutProcessing = false;
     }
-
-    return mainContent;
   }
 
-  Widget _posPaymentButton(
-    String key,
-    String label,
-    String selected,
-    double grandTotal,
-  ) {
-    final isSelected = key == selected;
+  Future<void> _showAddToCartQuantityDialog(_ProductItem product) async {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    IconData getIcon(String k) {
-      switch (k.toUpperCase()) {
-        case 'CASH':
-          return Icons.payments_outlined;
-        case 'CARD':
-          return Icons.credit_card_outlined;
-        case 'CHEQUE':
-          return Icons.sticky_note_2_outlined;
-        case 'CREDIT':
-          return Icons.badge_outlined;
-        case 'INSTALLMENT':
-          return Icons.calendar_month_outlined;
-        case 'COD':
-          return Icons.local_shipping_outlined;
-        default:
-          return Icons.payment_outlined;
-      }
-    }
-
-    return Expanded(
-      child: Material(
-        color: isSelected
-            ? (isDark
-                  ? AppTheme.brandIndigo.withValues(alpha: 0.15)
-                  : AppTheme.brandIndigo.withValues(alpha: 0.08))
-            : (isDark ? const Color(0xFF111827) : Colors.white),
-        borderRadius: BorderRadius.circular(UiRadius.md),
-        child: InkWell(
-          onTap: () => _applyPosPaymentMethod(key, grandTotal),
-          borderRadius: BorderRadius.circular(UiRadius.md),
-          child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(UiRadius.md),
-              border: Border.all(
-                color: isSelected
-                    ? AppTheme.brandIndigo
-                    : (isDark
-                          ? const Color(0xFF1E2D45)
-                          : const Color(0xFFE8EAFF)),
-                width: isSelected ? 1.5 : 1,
-              ),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  getIcon(key),
-                  size: 18,
-                  color: isSelected
-                      ? AppTheme.brandIndigo
-                      : (isDark
-                            ? const Color(0xFF94A3B8)
-                            : const Color(0xFF64748B)),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                    color: isSelected
-                        ? AppTheme.brandIndigo
-                        : (isDark
-                              ? const Color(0xFFCBD5E1)
-                              : const Color(0xFF334155)),
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _posPaymentCompactButton(
-    String key,
-    String label,
-    String selected,
-    double grandTotal,
-  ) {
-    final isSelected = key == selected;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
-    IconData getIcon(String k) {
-      switch (k.toUpperCase()) {
-        case 'CASH':
-          return Icons.payments_outlined;
-        case 'CARD':
-          return Icons.credit_card_outlined;
-        case 'CHEQUE':
-          return Icons.sticky_note_2_outlined;
-        case 'CREDIT':
-          return Icons.badge_outlined;
-        case 'INSTALLMENT':
-          return Icons.calendar_month_outlined;
-        case 'COD':
-          return Icons.local_shipping_outlined;
-        default:
-          return Icons.payment_outlined;
-      }
-    }
-
-    return SizedBox(
-      width: 104,
-      child: Material(
-        color: isSelected
-            ? (isDark
-                  ? AppTheme.brandIndigo.withValues(alpha: 0.15)
-                  : AppTheme.brandIndigo.withValues(alpha: 0.08))
-            : (isDark ? const Color(0xFF111827) : Colors.white),
-        borderRadius: BorderRadius.circular(UiRadius.md),
-        child: InkWell(
-          onTap: () => _applyPosPaymentMethod(key, grandTotal),
-          borderRadius: BorderRadius.circular(UiRadius.md),
-          child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(UiRadius.md),
-              border: Border.all(
-                color: isSelected
-                    ? AppTheme.brandIndigo
-                    : (isDark
-                          ? const Color(0xFF1E2D45)
-                          : const Color(0xFFE8EAFF)),
-                width: isSelected ? 1.5 : 1,
-              ),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  getIcon(key),
-                  size: 16,
-                  color: isSelected
-                      ? AppTheme.brandIndigo
-                      : (isDark
-                            ? const Color(0xFF94A3B8)
-                            : const Color(0xFF64748B)),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                    color: isSelected
-                        ? AppTheme.brandIndigo
-                        : (isDark
-                              ? const Color(0xFFCBD5E1)
-                              : const Color(0xFF334155)),
-                    fontSize: 11,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _showLineDiscountDialog(_ProductItem product) {
-    final TextEditingController valueController = TextEditingController(
-      text: _posLineDiscounts[product.id]?.value.toString() ?? '',
-    );
-    String type = _posLineDiscounts[product.id]?.type ?? 'FIXED';
-
-    showDialog(
-      context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: Text('Discount for ${product.name}'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: RadioListTile<String>(
-                          title: const Text('Fixed Amount'),
-                          value: 'FIXED',
-                          groupValue: type,
-                          onChanged: (val) {
-                            if (val != null) setDialogState(() => type = val);
-                          },
-                        ),
-                      ),
-                      Expanded(
-                        child: RadioListTile<String>(
-                          title: const Text('Percentage (%)'),
-                          value: 'PERCENT',
-                          groupValue: type,
-                          onChanged: (val) {
-                            if (val != null) setDialogState(() => type = val);
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                  TextField(
-                    controller: valueController,
-                    keyboardType: TextInputType.number,
-                    decoration: InputDecoration(
-                      labelText: type == 'PERCENT'
-                          ? 'Discount %'
-                          : 'Discount Amount',
-                      border: const OutlineInputBorder(),
-                    ),
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () {
-                    setState(() {
-                      _posLineDiscounts.remove(product.id);
-                    });
-                    Navigator.pop(context);
-                  },
-                  child: const Text(
-                    'Clear',
-                    style: TextStyle(color: Colors.red),
-                  ),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Cancel'),
-                ),
-                ElevatedButton(
-                  onPressed: () {
-                    final value = double.tryParse(valueController.text) ?? 0.0;
-                    if (value > 0) {
-                      setState(() {
-                        _posLineDiscounts[product.id] = _DiscountData(
-                          value: type == 'PERCENT'
-                              ? value.clamp(0, 100)
-                              : value,
-                          type: type,
-                        );
-                      });
-                    } else {
-                      setState(() {
-                        _posLineDiscounts.remove(product.id);
-                      });
-                    }
-                    Navigator.pop(context);
-                  },
-                  child: const Text('Apply'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
-  void _showInvoiceDiscountDialog() {
-    final TextEditingController valueController = TextEditingController(
-      text: _posInvoiceDiscountValue > 0
-          ? _posInvoiceDiscountValue.toString()
-          : '',
-    );
-    String type = _posInvoiceDiscountType;
-
-    showDialog(
-      context: context,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              title: const Text('Invoice Discount'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: RadioListTile<String>(
-                          title: const Text('Fixed Amount'),
-                          value: 'FIXED',
-                          groupValue: type,
-                          onChanged: (val) {
-                            if (val != null) setDialogState(() => type = val);
-                          },
-                        ),
-                      ),
-                      Expanded(
-                        child: RadioListTile<String>(
-                          title: const Text('Percentage (%)'),
-                          value: 'PERCENT',
-                          groupValue: type,
-                          onChanged: (val) {
-                            if (val != null) setDialogState(() => type = val);
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                  TextField(
-                    controller: valueController,
-                    keyboardType: TextInputType.number,
-                    decoration: InputDecoration(
-                      labelText: type == 'PERCENT'
-                          ? 'Discount %'
-                          : 'Discount Amount',
-                      border: const OutlineInputBorder(),
-                    ),
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () {
-                    setState(() {
-                      _posInvoiceDiscountValue = 0.0;
-                    });
-                    Navigator.pop(context);
-                  },
-                  child: const Text(
-                    'Clear',
-                    style: TextStyle(color: Colors.red),
-                  ),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Cancel'),
-                ),
-                ElevatedButton(
-                  onPressed: () {
-                    final value = double.tryParse(valueController.text) ?? 0.0;
-                    setState(() {
-                      _posInvoiceDiscountValue = type == 'PERCENT'
-                          ? value.clamp(0, 100)
-                          : value;
-                      _posInvoiceDiscountType = type;
-                    });
-                    Navigator.pop(context);
-                  },
-                  child: const Text('Apply'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
-  Future<void> _showProductSkuSelectionDialog(
-    List<_ProductItem> options,
-  ) async {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
-    await showDialog(
-      context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(UiRadius.lg),
-          ),
-          title: const Text(
-            'Select Variant / Batch',
-            style: TextStyle(fontWeight: FontWeight.w800),
-          ),
-          content: SizedBox(
-            width: ResponsiveLayout.adaptiveDialogWidth(context, 500),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Multiple products share this barcode or name. Please select the correct batch / price variant:',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: colorScheme.onSurface.withValues(alpha: 0.7),
-                  ),
-                ),
-                const SizedBox(height: 14),
-                Flexible(
-                  child: ListView.separated(
-                    shrinkWrap: true,
-                    itemCount: options.length,
-                    separatorBuilder: (context, index) => const Divider(),
-                    itemBuilder: (context, index) {
-                      final item = options[index];
-                      final expText = item.expiryDate != null
-                          ? ' • Exp: ${item.expiryDate!.toLocal().toString().split(' ').first}'
-                          : '';
-                      final branchText = item.locationId.isNotEmpty && item.locationId != 'LOC_MAIN'
-                          ? ' • Loc: ${item.locationId}'
-                          : '';
-                      return ListTile(
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 6,
-                        ),
-                        title: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Expanded(
-                              child: Row(
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                    margin: const EdgeInsets.only(right: 6),
-                                    decoration: BoxDecoration(
-                                      color: AppTheme.brandIndigo.withValues(alpha: 0.1),
-                                      borderRadius: BorderRadius.circular(4),
-                                      border: Border.all(color: AppTheme.brandIndigo.withValues(alpha: 0.2)),
-                                    ),
-                                    child: Text(
-                                      'Batch #${index + 1}',
-                                      style: TextStyle(
-                                        fontSize: 10.5,
-                                        fontWeight: FontWeight.bold,
-                                        color: AppTheme.brandIndigo,
-                                      ),
-                                    ),
-                                  ),
-                                  Expanded(
-                                    child: Text(
-                                      item.name,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 14,
-                                      ),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Text(
-                              _money(item.price),
-                              style: TextStyle(
-                                color: AppTheme.brandIndigo,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 14,
-                              ),
-                            ),
-                          ],
-                        ),
-                        subtitle: Padding(
-                          padding: const EdgeInsets.only(top: 4),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  'SKU/Bar: ${item.barcode.trim().isNotEmpty ? item.barcode : item.id} • Cost: ${_money(item.costPrice ?? 0.0)}$expText$branchText',
-                                  style: const TextStyle(fontSize: 12),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                'Stock: ${item.stock}',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: item.stock <= item.minStock
-                                      ? AppTheme.brandRose
-                                      : AppTheme.brandEmerald,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        trailing: Icon(
-                          Icons.add_shopping_cart_rounded,
-                          color: colorScheme.primary,
-                        ),
-                        onTap: () {
-                          if (item.stock <= 0) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('This batch is out of stock!'),
-                                duration: Duration(seconds: 1),
-                              ),
-                            );
-                            return;
-                          }
-                          if (item.allowLooseSales) {
-                            Navigator.pop(ctx);
-                            _showDualUnitSelectionDialog(item);
-                            _productSearchController.clear();
-                            return;
-                          }
-                          _addToCartWithImeiSelection(item);
-                          _productSearchController.clear();
-                          Navigator.pop(ctx);
-                        },
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  _ProductItem? _findProductByImei(String query) {
-    if (!_enableMobileShopFeatures) return null;
-    final trimmed = query.trim().toLowerCase();
-    if (trimmed.isEmpty) return null;
-    for (final p in _scopedProducts) {
-      if (p.imeis != null && p.imeis!.isNotEmpty) {
-        final imeisList = p.imeiList;
-        for (final imei in imeisList) {
-          if (imei.toLowerCase() == trimmed) {
-            return p;
-          }
-        }
-      }
-    }
-    return null;
-  }
-
-  void _addToCartWithImeiSelection(_ProductItem item, [String? imei]) {
-    final currentQty = _cart[item.id] ?? 0;
-    if (currentQty >= item.stock) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Cannot exceed available stock of ${item.stock}!'),
-          duration: const Duration(seconds: 1),
-        ),
-      );
-      return;
-    }
-
-    setState(() {
-      _cart[item.id] = currentQty + 1;
-
-      if (_enableMobileShopFeatures &&
-          item.imeis != null &&
-          item.imeis!.trim().isNotEmpty) {
-        final availableImeis = item.imeiList;
-        if (availableImeis.isNotEmpty) {
-          final currentSelected = _selectedCartImeis[item.id] ?? [];
-          final nextSelected = List<String>.from(currentSelected);
-
-          if (imei != null &&
-              availableImeis.contains(imei) &&
-              !nextSelected.contains(imei)) {
-            nextSelected.add(imei);
-          } else {
-            final unselected = availableImeis.firstWhere(
-              (x) => !nextSelected.contains(x),
-              orElse: () => '',
-            );
-            nextSelected.add(unselected);
-          }
-          _selectedCartImeis[item.id] = nextSelected;
-        }
-      }
-    });
-  }
-
-  void _decrementCartImei(_ProductItem item) {
-    setState(() {
-      final currentQty = _cart[item.id] ?? 0;
-      final next = currentQty - 1;
-      if (next <= 0) {
-        _removeTemporaryCartProducts([item.id]);
-        _cart.remove(item.id);
-        _selectedCartImeis.remove(item.id);
-      } else {
-        _cart[item.id] = next;
-        if (_enableMobileShopFeatures &&
-            _selectedCartImeis.containsKey(item.id)) {
-          final list = _selectedCartImeis[item.id]!;
-          if (list.isNotEmpty) {
-            list.removeLast();
-          }
-        }
-      }
-    });
-  }
-
-  void _removeCartImei(_ProductItem item) {
-    setState(() {
-      _removeTemporaryCartProducts([item.id]);
-      _cart.remove(item.id);
-      _selectedCartImeis.remove(item.id);
-    });
-  }
-
-  Future<void> _showEditCartQuantityDialog(_CartLine line) async {
-    final controller = TextEditingController(
-      text: line.qty.truncateToDouble() == line.qty
-          ? line.qty.toInt().toString()
-          : line.qty.toString(),
-    );
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) {
-        return AlertDialog(
-          title: Text('Edit Quantity - ${line.product.name}'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: controller,
-                autofocus: true,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                decoration: InputDecoration(
-                  labelText: 'Quantity (${line.product.measureUnit})',
-                  border: const OutlineInputBorder(),
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                final val = double.tryParse(controller.text.trim());
-                if (val == null) return;
-                setState(() {
-                  if (val <= 0) {
-                    _removeCartImei(line.product);
-                  } else {
-                    _cart[line.product.id] = (val * 100).round() / 100.0;
-                  }
-                });
-                Navigator.pop(ctx);
-              },
-              child: const Text('Update'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  Future<void> _showDualUnitSelectionDialog(_ProductItem product) async {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primaryUnit = product.measureUnit;
-    final secondaryUnit = product.secondaryUnit;
+    final primaryUnit = product.measureUnit.isNotEmpty ? product.measureUnit : 'Unit';
+    final secondaryUnit = product.secondaryUnit.isNotEmpty ? product.secondaryUnit : 'Loose';
     final ratio = product.unitConversionRatio > 0
         ? product.unitConversionRatio
         : 1.0;
     final loosePrice = product.secondaryPrice ??
         (ratio > 0 ? (product.price / ratio) : product.price);
 
+    final bool hasLooseSales = product.allowLooseSales;
     bool isLooseSelected = false;
     double chosenQty = 1.0;
     final qtyController = TextEditingController(text: '1');
+    qtyController.selection = const TextSelection(baseOffset: 0, extentOffset: 1);
+    final focusNode = FocusNode();
 
     await showDialog<void>(
       context: context,
+      barrierDismissible: true,
       builder: (dialogCtx) {
         return StatefulBuilder(
           builder: (context, setLocal) {
-            final activeUnit = isLooseSelected ? secondaryUnit : primaryUnit;
-            final activeUnitPrice =
-                isLooseSelected ? loosePrice : product.price;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (focusNode.canRequestFocus && !focusNode.hasFocus) {
+                focusNode.requestFocus();
+                qtyController.selection = TextSelection(
+                  baseOffset: 0,
+                  extentOffset: qtyController.text.length,
+                );
+              }
+            });
+
+            final activeUnit = (hasLooseSales && isLooseSelected)
+                ? secondaryUnit
+                : primaryUnit;
+            final activeUnitPrice = (hasLooseSales && isLooseSelected)
+                ? loosePrice
+                : product.price;
             final lineTotal = activeUnitPrice * chosenQty;
 
             final totalLooseStock =
                 ratio > 0 ? (product.stock * ratio) : product.stock;
-            final maxStock = isLooseSelected ? totalLooseStock : product.stock;
+            final maxStock = (hasLooseSales && isLooseSelected)
+                ? totalLooseStock
+                : product.stock;
             final stockWarning = chosenQty > maxStock;
 
             void updateQty(double newQty) {
-              if (newQty < 0.01) newQty = 0.01;
+              if (newQty < 0.001) newQty = 0.001;
               setLocal(() {
-                chosenQty = (newQty * 100).round() / 100.0;
-                qtyController.text = chosenQty.truncateToDouble() == chosenQty
+                chosenQty = (newQty * 1000).round() / 1000.0;
+                final text = chosenQty.truncateToDouble() == chosenQty
                     ? chosenQty.toInt().toString()
                     : chosenQty.toString();
+                qtyController.text = text;
+                qtyController.selection = TextSelection(
+                  baseOffset: 0,
+                  extentOffset: text.length,
+                );
               });
             }
 
-            return AlertDialog(
-              backgroundColor: Theme.of(context).colorScheme.surface,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-              titlePadding: const EdgeInsets.fromLTRB(20, 18, 20, 10),
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 20,
-                vertical: 8,
-              ),
-              actionsPadding: const EdgeInsets.fromLTRB(20, 10, 20, 16),
-              title: Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF0EA5E9).withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(10),
+            void submitAdd() {
+              final typed = double.tryParse(qtyController.text.trim());
+              if (typed != null && typed > 0) {
+                chosenQty = typed;
+              }
+              if (chosenQty <= 0) return;
+              final targetCartId = (hasLooseSales && isLooseSelected)
+                  ? 'LOOSE:${product.id}'
+                  : product.id;
+              final currentQty = _cart[targetCartId] ?? 0;
+              final newQty = currentQty + chosenQty;
+
+              if (newQty > maxStock) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      'Warning: Stock limit ($maxStock $activeUnit) exceeded. Added to bill.',
                     ),
-                    child: const Icon(
-                      Icons.scale_rounded,
-                      color: Color(0xFF0EA5E9),
-                      size: 22,
-                    ),
+                    backgroundColor: Colors.amber.shade900,
+                    duration: const Duration(seconds: 2),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          product.name,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          'Stock: ${_formatDualStock(product.stock, primaryUnit, secondaryUnit, ratio)}',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: product.stock <= product.minStock
-                                ? AppTheme.brandRose
-                                : AppTheme.brandEmerald,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              content: SizedBox(
-                width: 440,
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        _t('Select Selling Unit:'),
-                        style: const TextStyle(
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w600,
-                        ),
+                );
+              }
+
+              setState(() {
+                _cart[targetCartId] = (newQty * 1000).round() / 1000.0;
+
+                if (!isLooseSelected &&
+                    _enableMobileShopFeatures &&
+                    product.imeis != null &&
+                    product.imeis!.trim().isNotEmpty) {
+                  final availableImeis = product.imeiList;
+                  if (availableImeis.isNotEmpty) {
+                    final currentSelected = _selectedCartImeis[product.id] ?? [];
+                    final nextSelected = List<String>.from(currentSelected);
+                    for (int i = 0; i < chosenQty.toInt(); i++) {
+                      final unselected = availableImeis.firstWhere(
+                        (x) => !nextSelected.contains(x),
+                        orElse: () => '',
+                      );
+                      if (unselected.isNotEmpty) {
+                        nextSelected.add(unselected);
+                      }
+                    }
+                    _selectedCartImeis[product.id] = nextSelected;
+                  }
+                }
+              });
+
+              _productSearchController.clear();
+              Navigator.pop(dialogCtx);
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (_posProductSearchFocusNode.canRequestFocus) { _posProductSearchFocusNode.requestFocus(); }
+              });
+            }
+
+            return Focus(
+              autofocus: false,
+              onKeyEvent: (node, event) {
+                if (event is! KeyDownEvent) return KeyEventResult.ignored;
+                if (event.logicalKey == LogicalKeyboardKey.enter ||
+                    event.logicalKey == LogicalKeyboardKey.numpadEnter) {
+                  submitAdd();
+                  return KeyEventResult.handled;
+                } else if (event.logicalKey == LogicalKeyboardKey.escape) {
+                  Navigator.pop(dialogCtx);
+                  return KeyEventResult.handled;
+                }
+                return KeyEventResult.ignored;
+              },
+              child: AlertDialog(
+                backgroundColor: Theme.of(context).colorScheme.surface,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                titlePadding: const EdgeInsets.fromLTRB(20, 18, 20, 10),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 8,
+                ),
+                actionsPadding: const EdgeInsets.fromLTRB(20, 10, 20, 16),
+                title: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: hasLooseSales
+                            ? const Color(0xFF0EA5E9).withValues(alpha: 0.12)
+                            : const Color(0xFF6366F1).withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                      const SizedBox(height: 8),
-                      Row(
+                      child: Icon(
+                        hasLooseSales
+                            ? Icons.scale_rounded
+                            : Icons.add_shopping_cart_rounded,
+                        color: hasLooseSales
+                            ? const Color(0xFF0EA5E9)
+                            : const Color(0xFF6366F1),
+                        size: 24,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Expanded(
-                            child: InkWell(
-                              onTap: () {
-                                setLocal(() {
-                                  isLooseSelected = false;
-                                  updateQty(1.0);
-                                });
-                              },
-                              borderRadius: BorderRadius.circular(12),
-                              child: AnimatedContainer(
-                                duration: const Duration(milliseconds: 180),
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 12,
-                                  horizontal: 10,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: !isLooseSelected
-                                      ? const Color(
-                                          0xFF6366F1,
-                                        ).withValues(alpha: 0.12)
-                                      : (isDark
-                                            ? Colors.white.withValues(
-                                                alpha: 0.04,
-                                              )
-                                            : Colors.grey.shade100),
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(
-                                    color: !isLooseSelected
-                                        ? const Color(0xFF6366F1)
-                                        : (isDark
-                                              ? Colors.white12
-                                              : Colors.grey.shade300),
-                                    width: !isLooseSelected ? 1.8 : 1.0,
-                                  ),
-                                ),
-                                child: Column(
-                                  children: [
-                                    Icon(
-                                      Icons.inventory_2_outlined,
-                                      size: 24,
-                                      color: !isLooseSelected
-                                          ? const Color(0xFF6366F1)
-                                          : (isDark
-                                                ? Colors.grey[400]
-                                                : Colors.grey[600]),
-                                    ),
-                                    const SizedBox(height: 6),
-                                    Text(
-                                      'Full $primaryUnit',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 13.5,
-                                        color: !isLooseSelected
-                                            ? const Color(0xFF6366F1)
-                                            : (isDark
-                                                  ? Colors.white
-                                                  : Colors.grey.shade800),
-                                      ),
-                                    ),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      _money(product.price),
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w600,
-                                        color: !isLooseSelected
-                                            ? const Color(0xFF6366F1)
-                                            : (isDark
-                                                  ? Colors.grey[400]
-                                                  : Colors.grey[600]),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
+                          Text(
+                            product.name,
+                            style: const TextStyle(
+                              fontSize: 16.5,
+                              fontWeight: FontWeight.bold,
                             ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
                           ),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: InkWell(
-                              onTap: () {
-                                setLocal(() {
-                                  isLooseSelected = true;
-                                  updateQty(1.0);
-                                });
-                              },
-                              borderRadius: BorderRadius.circular(12),
-                              child: AnimatedContainer(
-                                duration: const Duration(milliseconds: 180),
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 12,
-                                  horizontal: 10,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: isLooseSelected
-                                      ? const Color(
-                                          0xFF0EA5E9,
-                                        ).withValues(alpha: 0.12)
-                                      : (isDark
-                                            ? Colors.white.withValues(
-                                                alpha: 0.04,
-                                              )
-                                            : Colors.grey.shade100),
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(
-                                    color: isLooseSelected
-                                        ? const Color(0xFF0EA5E9)
-                                        : (isDark
-                                              ? Colors.white12
-                                              : Colors.grey.shade300),
-                                    width: isLooseSelected ? 1.8 : 1.0,
-                                  ),
-                                ),
-                                child: Column(
-                                  children: [
-                                    Icon(
-                                      Icons.scale_rounded,
-                                      size: 24,
-                                      color: isLooseSelected
-                                          ? const Color(0xFF0EA5E9)
-                                          : (isDark
-                                                ? Colors.grey[400]
-                                                : Colors.grey[600]),
-                                    ),
-                                    const SizedBox(height: 6),
-                                    Text(
-                                      'Loose $secondaryUnit',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 13.5,
-                                        color: isLooseSelected
-                                            ? const Color(0xFF0EA5E9)
-                                            : (isDark
-                                                  ? Colors.white
-                                                  : Colors.grey.shade800),
-                                      ),
-                                    ),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      '${_money(loosePrice)} / $secondaryUnit',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w600,
-                                        color: isLooseSelected
-                                            ? const Color(0xFF0EA5E9)
-                                            : (isDark
-                                                  ? Colors.grey[400]
-                                                  : Colors.grey[600]),
-                                      ),
-                                    ),
-                                  ],
+                          const SizedBox(height: 3),
+                          Wrap(
+                            spacing: 8,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              Text(
+                                hasLooseSales
+                                    ? 'Stock: ${_formatDualStock(product.stock, primaryUnit, secondaryUnit, ratio)}'
+                                    : 'Stock: ${_formatQty(product.stock)} $primaryUnit',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: product.stock <= product.minStock
+                                      ? AppTheme.brandRose
+                                      : AppTheme.brandEmerald,
                                 ),
                               ),
-                            ),
+                              if (product.barcode.isNotEmpty)
+                                Text(
+                                  '• ${product.barcode}',
+                                  style: TextStyle(
+                                    fontSize: 11.5,
+                                    color: isDark ? Colors.grey[400] : Colors.grey[600],
+                                  ),
+                                ),
+                            ],
                           ),
                         ],
                       ),
-                      const SizedBox(height: 16),
-                      if (isLooseSelected) ...[
+                    ),
+                  ],
+                ),
+                content: SizedBox(
+                  width: 440,
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (hasLooseSales) ...[
+                          Text(
+                            _t('Select Selling Unit (විකිණීමේ ඒකකය):'),
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: InkWell(
+                                  onTap: () {
+                                    setLocal(() {
+                                      isLooseSelected = false;
+                                      updateQty(1.0);
+                                    });
+                                  },
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: AnimatedContainer(
+                                    duration: const Duration(milliseconds: 180),
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 12,
+                                      horizontal: 10,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: !isLooseSelected
+                                          ? const Color(0xFF6366F1).withValues(alpha: 0.12)
+                                          : (isDark
+                                              ? Colors.white.withValues(alpha: 0.04)
+                                              : Colors.grey.shade100),
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(
+                                        color: !isLooseSelected
+                                            ? const Color(0xFF6366F1)
+                                            : (isDark ? Colors.white12 : Colors.grey.shade300),
+                                        width: !isLooseSelected ? 2.0 : 1.0,
+                                      ),
+                                    ),
+                                    child: Column(
+                                      children: [
+                                        Icon(
+                                          Icons.inventory_2_outlined,
+                                          size: 22,
+                                          color: !isLooseSelected
+                                              ? const Color(0xFF6366F1)
+                                              : (isDark ? Colors.grey[400] : Colors.grey[600]),
+                                        ),
+                                        const SizedBox(height: 5),
+                                        Text(
+                                          'Full $primaryUnit',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 13.5,
+                                            color: !isLooseSelected
+                                                ? const Color(0xFF6366F1)
+                                                : (isDark ? Colors.white : Colors.grey.shade800),
+                                          ),
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          _money(product.price),
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w600,
+                                            color: !isLooseSelected
+                                                ? const Color(0xFF6366F1)
+                                                : (isDark ? Colors.grey[400] : Colors.grey[600]),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: InkWell(
+                                  onTap: () {
+                                    setLocal(() {
+                                      isLooseSelected = true;
+                                      updateQty(1.0);
+                                    });
+                                  },
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: AnimatedContainer(
+                                    duration: const Duration(milliseconds: 180),
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 12,
+                                      horizontal: 10,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: isLooseSelected
+                                          ? const Color(0xFF0EA5E9).withValues(alpha: 0.12)
+                                          : (isDark
+                                              ? Colors.white.withValues(alpha: 0.04)
+                                              : Colors.grey.shade100),
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(
+                                        color: isLooseSelected
+                                            ? const Color(0xFF0EA5E9)
+                                            : (isDark ? Colors.white12 : Colors.grey.shade300),
+                                        width: isLooseSelected ? 2.0 : 1.0,
+                                      ),
+                                    ),
+                                    child: Column(
+                                      children: [
+                                        Icon(
+                                          Icons.scale_rounded,
+                                          size: 22,
+                                          color: isLooseSelected
+                                              ? const Color(0xFF0EA5E9)
+                                              : (isDark ? Colors.grey[400] : Colors.grey[600]),
+                                        ),
+                                        const SizedBox(height: 5),
+                                        Text(
+                                          'Loose $secondaryUnit',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 13.5,
+                                            color: isLooseSelected
+                                                ? const Color(0xFF0EA5E9)
+                                                : (isDark ? Colors.white : Colors.grey.shade800),
+                                          ),
+                                        ),
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          '${_money(loosePrice)} / $secondaryUnit',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w600,
+                                            color: isLooseSelected
+                                                ? const Color(0xFF0EA5E9)
+                                                : (isDark ? Colors.grey[400] : Colors.grey[600]),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                        ],
+
                         Text(
-                          _t('Quick Quantity:'),
+                          _t('Quick Quantity (කෙටි ප්‍රමාණ):'),
                           style: const TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
@@ -7534,236 +8859,386 @@ extension _point_of_saleExt on _DashboardScreenState {
                         Wrap(
                           spacing: 6,
                           runSpacing: 6,
-                          children: [0.5, 1.0, 2.0, 5.0, 10.0, 25.0]
-                              .where((q) => q <= ratio)
+                          children: (hasLooseSales && isLooseSelected
+                                  ? [0.25, 0.5, 1.0, 2.0, 5.0, 10.0]
+                                  : [1.0, 2.0, 3.0, 5.0, 10.0, 20.0])
                               .map((chipQty) {
-                                final isSel = chosenQty == chipQty;
-                                return InkWell(
-                                  onTap: () => updateQty(chipQty),
+                            final isSel = chosenQty == chipQty;
+                            final themeColor = (hasLooseSales && isLooseSelected)
+                                ? const Color(0xFF0EA5E9)
+                                : const Color(0xFF6366F1);
+                            return InkWell(
+                              onTap: () => updateQty(chipQty),
+                              borderRadius: BorderRadius.circular(20),
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 150),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 5,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: isSel
+                                      ? themeColor
+                                      : (isDark
+                                          ? Colors.white10
+                                          : Colors.grey.shade200),
                                   borderRadius: BorderRadius.circular(20),
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 10,
-                                      vertical: 5,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: isSel
-                                          ? const Color(0xFF0EA5E9)
-                                          : (isDark
-                                                ? Colors.white10
-                                                : Colors.grey.shade200),
-                                      borderRadius: BorderRadius.circular(20),
-                                    ),
-                                    child: Text(
-                                      '+${chipQty.truncateToDouble() == chipQty ? chipQty.toInt() : chipQty} $secondaryUnit',
-                                      style: TextStyle(
-                                        fontSize: 11.5,
-                                        fontWeight: isSel
-                                            ? FontWeight.bold
-                                            : FontWeight.w500,
-                                        color: isSel
-                                            ? Colors.white
-                                            : (isDark
-                                                  ? Colors.white70
-                                                  : Colors.grey.shade800),
-                                      ),
-                                    ),
+                                ),
+                                child: Text(
+                                  (hasLooseSales && isLooseSelected)
+                                      ? '+${chipQty.truncateToDouble() == chipQty ? chipQty.toInt() : chipQty} $secondaryUnit'
+                                      : '+${chipQty.toInt()} $primaryUnit',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: isSel
+                                        ? FontWeight.bold
+                                        : FontWeight.w500,
+                                    color: isSel
+                                        ? Colors.white
+                                        : (isDark
+                                            ? Colors.white70
+                                            : Colors.grey.shade800),
                                   ),
-                                );
-                              })
-                              .toList(),
+                                ),
+                              ),
+                            );
+                          }).toList(),
                         ),
                         const SizedBox(height: 14),
-                      ],
-                      Row(
-                        children: [
-                          IconButton(
-                            onPressed: () {
-                              final step = 1.0;
-                              updateQty(
-                                (chosenQty - step).clamp(0.1, 999999.0),
-                              );
-                            },
-                            icon: const Icon(Icons.remove_circle_outline),
-                            color: AppTheme.brandRose,
-                          ),
-                          Expanded(
-                            child: TextField(
-                              controller: qtyController,
-                              keyboardType:
-                                  const TextInputType.numberWithOptions(
-                                    decimal: true,
-                                  ),
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                              decoration: InputDecoration(
-                                suffixText: activeUnit,
-                                contentPadding: const EdgeInsets.symmetric(
-                                  vertical: 10,
-                                ),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                              ),
-                              onChanged: (val) {
-                                final v = double.tryParse(val.trim());
-                                if (v != null && v > 0) {
-                                  setLocal(() {
-                                    chosenQty = v;
-                                  });
-                                }
-                              },
-                            ),
-                          ),
-                          IconButton(
-                            onPressed: () {
-                              final step = 1.0;
-                              updateQty(chosenQty + step);
-                            },
-                            icon: const Icon(Icons.add_circle_outline),
-                            color: AppTheme.brandEmerald,
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: isDark
-                              ? Colors.white.withValues(alpha: 0.04)
-                              : Colors.grey.shade100,
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(
-                            color: stockWarning
-                                ? Colors.redAccent
-                                : (isDark
-                                      ? Colors.white10
-                                      : Colors.grey.shade300),
+
+                        Text(
+                          _t('Quantity (ප්‍රමාණය ඇතුළත් කරන්න):'),
+                          style: const TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
-                        child: Column(
+                        const SizedBox(height: 6),
+                        Row(
                           children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                const Text(
-                                  'Total for this line:',
-                                  style: TextStyle(fontSize: 13),
-                                ),
-                                Text(
-                                  _money(lineTotal),
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                    color: Color(0xFF6366F1),
-                                  ),
-                                ),
-                              ],
+                            IconButton.filledTonal(
+                              onPressed: () {
+                                final step = (hasLooseSales && isLooseSelected) ? 0.25 : 1.0;
+                                updateQty((chosenQty - step).clamp(0.01, 999999.0));
+                              },
+                              icon: const Icon(Icons.remove_rounded),
+                              color: AppTheme.brandRose,
                             ),
-                            if (isLooseSelected) ...[
-                              const SizedBox(height: 4),
-                              Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(
-                                    'Stock Deduction:',
-                                    style: TextStyle(
-                                      fontSize: 11.5,
-                                      color: isDark
-                                          ? Colors.grey[400]
-                                          : Colors.grey[600],
-                                    ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: TextField(
+                                controller: qtyController,
+                                focusNode: focusNode,
+                                autofocus: true,
+                                keyboardType: const TextInputType.numberWithOptions(
+                                  decimal: true,
+                                ),
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                                decoration: InputDecoration(
+                                  suffixText: activeUnit,
+                                  suffixStyle: const TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w600,
                                   ),
-                                  Text(
-                                    '${(chosenQty / ratio).toStringAsFixed(3)} $primaryUnit',
-                                    style: TextStyle(
-                                      fontSize: 11.5,
-                                      fontWeight: FontWeight.w600,
-                                      color: isDark
-                                          ? Colors.grey[300]
-                                          : Colors.grey[700],
-                                    ),
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    vertical: 12,
                                   ),
-                                ],
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                                onChanged: (val) {
+                                  final v = double.tryParse(val.trim());
+                                  if (v != null && v > 0) {
+                                    setLocal(() {
+                                      chosenQty = v;
+                                    });
+                                  }
+                                },
+                                onSubmitted: (_) => submitAdd(),
                               ),
-                            ],
-                            if (stockWarning) ...[
-                              const SizedBox(height: 6),
-                              Row(
-                                children: [
-                                  const Icon(
-                                    Icons.warning_amber_rounded,
-                                    size: 14,
-                                    color: Colors.redAccent,
-                                  ),
-                                  const SizedBox(width: 4),
-                                  Text(
-                                    'Exceeds available stock ($maxStock $activeUnit)!',
-                                    style: const TextStyle(
-                                      color: Colors.redAccent,
-                                      fontSize: 11,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
+                            ),
+                            const SizedBox(width: 8),
+                            IconButton.filledTonal(
+                              onPressed: () {
+                                final step = (hasLooseSales && isLooseSelected) ? 0.25 : 1.0;
+                                updateQty(chosenQty + step);
+                              },
+                              icon: const Icon(Icons.add_rounded),
+                              color: AppTheme.brandEmerald,
+                            ),
                           ],
                         ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(dialogCtx),
-                  child: const Text('Cancel'),
-                ),
-                ElevatedButton.icon(
-                  onPressed: () {
-                    final targetCartId = isLooseSelected
-                        ? 'LOOSE:${product.id}'
-                        : product.id;
-                    final currentQty = _cart[targetCartId] ?? 0;
-                    final newQty = currentQty + chosenQty;
+                        const SizedBox(height: 14),
 
-                    if (newQty > maxStock) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            'Cannot exceed available stock of $maxStock $activeUnit!',
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: isDark
+                                ? Colors.white.withValues(alpha: 0.04)
+                                : Colors.grey.shade100,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: stockWarning
+                                  ? Colors.redAccent
+                                  : (isDark ? Colors.white10 : Colors.grey.shade300),
+                            ),
                           ),
-                          backgroundColor: Colors.red,
+                          child: Column(
+                            children: [
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    _t('Line Total (මුළු මුදල):'),
+                                    style: const TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                  Text(
+                                    _money(lineTotal),
+                                    style: TextStyle(
+                                      fontSize: 17,
+                                      fontWeight: FontWeight.bold,
+                                      color: (hasLooseSales && isLooseSelected)
+                                          ? const Color(0xFF0EA5E9)
+                                          : const Color(0xFF6366F1),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              if (hasLooseSales && isLooseSelected) ...[
+                                const SizedBox(height: 4),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(
+                                      'Stock Deduction:',
+                                      style: TextStyle(
+                                        fontSize: 11.5,
+                                        color: isDark ? Colors.grey[400] : Colors.grey[600],
+                                      ),
+                                    ),
+                                    Text(
+                                      '${(chosenQty / ratio).toStringAsFixed(3)} $primaryUnit',
+                                      style: TextStyle(
+                                        fontSize: 11.5,
+                                        fontWeight: FontWeight.w600,
+                                        color: isDark ? Colors.grey[300] : Colors.grey[700],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                              if (stockWarning) ...[
+                                const SizedBox(height: 6),
+                                Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.warning_amber_rounded,
+                                      size: 16,
+                                      color: Colors.redAccent,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      'Exceeds available stock ($maxStock $activeUnit)!',
+                                      style: const TextStyle(
+                                        color: Colors.redAccent,
+                                        fontSize: 11.5,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ],
+                          ),
                         ),
-                      );
-                      return;
-                    }
-
-                    setState(() {
-                      _cart[targetCartId] = (newQty * 100).round() / 100.0;
-                    });
-                    _productSearchController.clear();
-                    Navigator.pop(dialogCtx);
-                  },
-                  icon: const Icon(Icons.add_shopping_cart_rounded, size: 18),
-                  label: const Text('Add to Bill'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: isLooseSelected
-                        ? const Color(0xFF0EA5E9)
-                        : const Color(0xFF6366F1),
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
+                      ],
                     ),
                   ),
                 ),
-              ],
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(dialogCtx),
+                    child: const Text('Cancel (Esc)'),
+                  ),
+                  ElevatedButton.icon(
+                    onPressed: submitAdd,
+                    icon: const Icon(Icons.add_shopping_cart_rounded, size: 18),
+                    label: const Text('Add to Bill (Enter)'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: (hasLooseSales && isLooseSelected)
+                          ? const Color(0xFF0EA5E9)
+                          : const Color(0xFF6366F1),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             );
           },
+        );
+      },
+    );
+    focusNode.dispose();
+    qtyController.dispose();
+  }
+
+  Future<void> _showDualUnitSelectionDialog(_ProductItem product) async {
+    return _showAddToCartQuantityDialog(product);
+  }
+
+  void _showPosShortcutsGuideDialog() {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) {
+        final shortcutsList = [
+          {
+            'key': _posShortcuts['completeSale'] ?? 'Enter',
+            'title': 'Complete Sale (බිල අවසන් කිරීම)',
+            'desc': 'Fast checkout with exact cash or current payment method'
+          },
+          {
+            'key': _posShortcuts['focusSearch'] ?? 'F1',
+            'title': 'Search Product (භාණ්ඩ සෙවීම)',
+            'desc': 'Focus product search bar immediately'
+          },
+          {
+            'key': _posShortcuts['payCash'] ?? 'F2',
+            'title': 'Cash Payment (මුදල් ගෙවීම)',
+            'desc': 'Switch payment method to Cash'
+          },
+          {
+            'key': _posShortcuts['payCard'] ?? 'F3',
+            'title': 'Card Payment (කාඩ්පත්)',
+            'desc': 'Switch payment method to Card'
+          },
+          {
+            'key': _posShortcuts['holdCart'] ?? 'F4',
+            'title': 'Hold Cart (බිල රඳවා තැබීම)',
+            'desc': 'Hold active cart to serve another customer'
+          },
+          {
+            'key': _posShortcuts['resumeCart'] ?? 'F5',
+            'title': 'Resume Cart (රඳවාගත් බිල නැවත ලබාගැනීම)',
+            'desc': 'Restore the last held customer cart'
+          },
+          {
+            'key': _posShortcuts['clearCart'] ?? 'F6',
+            'title': 'Clear Cart (හිස් කිරීම)',
+            'desc': 'Clear all items in current cart'
+          },
+          {
+            'key': _posShortcuts['billPreview'] ?? 'F7',
+            'title': 'Bill Preview (බිල්පත පෙරදසුන)',
+            'desc': 'Preview printed receipt before finalizing sale'
+          },
+          {
+            'key': _posShortcuts['openDiscount'] ?? 'F8',
+            'title': 'Apply Discount (වට්ටම් ලබා දීම)',
+            'desc': 'Open bill discount window'
+          },
+          {
+            'key': _posShortcuts['addCustomer'] ?? 'F9',
+            'title': 'Select Customer (පාරිභෝගිකයා තෝරාගැනීම)',
+            'desc': 'Focus customer search to link customer'
+          },
+          {
+            'key': 'Click Item',
+            'title': 'Quick Qty & Loose Popup',
+            'desc': 'Click any item card to pick quantity or loose/box selling unit, then press Enter'
+          },
+        ];
+
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF6366F1).withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.keyboard_rounded, color: Color(0xFF6366F1), size: 22),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('POS Keyboard Shortcuts', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    Text('යතුරුපුවරු කෙටිමං මඟින් ඉතා ඉක්මනින් බිල්පත් සකස් කරන්න', style: TextStyle(fontSize: 11.5, color: Colors.grey)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          content: SizedBox(
+            width: 480,
+            child: ListView.separated(
+              shrinkWrap: true,
+              itemCount: shortcutsList.length,
+              separatorBuilder: (_, __) => const Divider(height: 1),
+              itemBuilder: (_, index) {
+                final sc = shortcutsList[index];
+                return ListTile(
+                  dense: true,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  leading: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF6366F1).withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: const Color(0xFF6366F1).withValues(alpha: 0.4)),
+                    ),
+                    child: Text(
+                      sc['key']!,
+                      style: const TextStyle(
+                        fontFamily: 'monospace',
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF6366F1),
+                        fontSize: 12.5,
+                      ),
+                    ),
+                  ),
+                  title: Text(sc['title']!, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+                  subtitle: Text(sc['desc']!, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Close (වසන්න)'),
+            ),
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.pop(ctx);
+                setState(() {
+                  _settingsTab = 'shortcuts';
+                  _selectedNavKey = 'settings';
+                });
+              },
+              icon: const Icon(Icons.tune_rounded, size: 16),
+              label: const Text('Customize Shortcuts (සැකසුම්)'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF6366F1),
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ],
         );
       },
     );

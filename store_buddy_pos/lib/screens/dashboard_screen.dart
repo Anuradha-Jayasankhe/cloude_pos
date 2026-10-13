@@ -606,6 +606,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String _productScanBuffer = '';
   DateTime _lastProductScanTime = DateTime.now();
   bool _isProductDialogOpen = false;
+  VoidCallback? _onPosCheckoutRequested;
 
   final List<_MobileReloadRecord> _mobileReloads = [];
   Map<String, List<Map<String, dynamic>>> _operatorCommissions = {
@@ -755,6 +756,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   final TextEditingController _posCustomerPhoneController =
       TextEditingController();
   final TextEditingController _amountPaidController = TextEditingController();
+  final FocusNode _amountPaidFocusNode = FocusNode();
+  final FocusNode _posPaymentMethodFocusNode = FocusNode();
   final TextEditingController _posNotesController = TextEditingController();
   final TextEditingController _chequeNumberController = TextEditingController();
   final TextEditingController _posShippingController = TextEditingController();
@@ -850,9 +853,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
     _paymentMethodController.text = 'CASH';
     _resetPosInstallmentSchedule();
+    _amountPaidFocusNode.addListener(() {
+      if (mounted) setState(() {});
+    });
+    _posPaymentMethodFocusNode.addListener(() {
+      if (mounted) setState(() {});
+    });
     _loadPersistedWorkspaceData();
     _loadDeviceLocalPrinterSettings();
     _loadStoreLogins();
+    _loadKeyboardShortcuts();
     _checkSubscriptionAndEnforceExpiry();
     HardwareKeyboard.instance.addHandler(_handleGlobalHardwareKey);
   }
@@ -1083,6 +1093,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _posCustomerNameController.dispose();
     _posCustomerPhoneController.dispose();
     _amountPaidController.dispose();
+    _amountPaidFocusNode.dispose();
+    _posPaymentMethodFocusNode.dispose();
     _posNotesController.dispose();
     _chequeNumberController.dispose();
     _posShippingController.dispose();
@@ -1143,6 +1155,151 @@ class _DashboardScreenState extends State<DashboardScreen> {
         event.character!.isNotEmpty &&
         event.character!.codeUnitAt(0) >= 32) {
       _productScanBuffer += event.character!;
+    }
+
+    if (_selectedNavKey == 'pos') {
+      final currentFocus = FocusManager.instance.primaryFocus;
+      final isEditableFocused = currentFocus?.context?.widget is EditableText;
+      final isFunctionKey = event.logicalKey.keyId >= LogicalKeyboardKey.f1.keyId &&
+          event.logicalKey.keyId <= LogicalKeyboardKey.f12.keyId;
+      final isEnterKey = event.logicalKey == LogicalKeyboardKey.enter ||
+          event.logicalKey == LogicalKeyboardKey.numpadEnter;
+
+      // If cashier is typing inside an editable text field, non-function & non-enter shortcuts
+      // must NOT intercept ordinary typing.
+      if (isEditableFocused && !isFunctionKey && !isEnterKey) {
+        return false;
+      }
+
+      // 1. Complete Sale / Fast Checkout shortcut (default: Enter)
+      if (_matchesShortcutKey(event, 'completeSale')) {
+        // If cashier is typing inside product search bar or customer search bar, allow text submit
+        if (isEditableFocused &&
+            ((_posProductSearchFocusNode.hasFocus &&
+                    _productSearchController.text.trim().isNotEmpty) ||
+                (_posCustomerSearchFocusNode.hasFocus &&
+                    _posCustomerSearchController.text.trim().isNotEmpty))) {
+          return false;
+        }
+        if (_onPosCheckoutRequested != null) {
+          _onPosCheckoutRequested!();
+          return true;
+        } else if (_cart.isEmpty) {
+          ScaffoldMessenger.of(context).clearSnackBars();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Cart එක හිස්ව පවතී. කරුණාකර භාණ්ඩ Cart එකට එක් කරන්න.'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+          return true;
+        }
+      }
+
+      // 2. Focus Product Search (default: F1)
+      if (_matchesShortcutKey(event, 'focusSearch')) {
+        _posProductSearchFocusNode.requestFocus();
+        _productSearchController.selection = TextSelection(
+          baseOffset: 0,
+          extentOffset: _productSearchController.text.length,
+        );
+        return true;
+      }
+
+      // 3. Quick Cash payment (default: F2)
+      if (_matchesShortcutKey(event, 'payCash')) {
+        setState(() {
+          _paymentMethodController.text = 'CASH';
+        });
+        ScaffoldMessenger.of(context).clearSnackBars();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Payment Method: CASH (මුදල් ගෙවීම)'),
+            duration: Duration(milliseconds: 1200),
+          ),
+        );
+        return true;
+      }
+
+      // 4. Quick Card payment (default: F3)
+      if (_matchesShortcutKey(event, 'payCard')) {
+        setState(() {
+          _paymentMethodController.text = 'CARD';
+        });
+        ScaffoldMessenger.of(context).clearSnackBars();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Payment Method: CARD (කාඩ්පත් ගෙවීම)'),
+            duration: Duration(milliseconds: 1200),
+          ),
+        );
+        return true;
+      }
+
+      // 5. Hold Cart (default: F4)
+      if (_matchesShortcutKey(event, 'holdCart')) {
+        if (_cart.isNotEmpty) {
+          _holdCurrentCart().then((_) {
+            if (mounted) {
+              ScaffoldMessenger.of(context).clearSnackBars();
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Bill held successfully')),
+              );
+            }
+          });
+          return true;
+        }
+      }
+
+      // 6. Resume Held Cart (default: F5)
+      if (_matchesShortcutKey(event, 'resumeCart')) {
+        if (_heldCarts.isNotEmpty) {
+          _resumeHeldCart();
+          return true;
+        }
+      }
+
+      // 7. Clear Cart (default: F6)
+      if (_matchesShortcutKey(event, 'clearCart')) {
+        if (_cart.isNotEmpty) {
+          setState(() {
+            _cart.clear();
+            _selectedCartImeis.clear();
+            _posLineDiscounts.clear();
+            _posLinePrices.clear();
+            _resetPosDiscountState();
+            _amountPaidController.clear();
+          });
+          ScaffoldMessenger.of(context).clearSnackBars();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Shopping Cart cleared.'),
+              duration: Duration(seconds: 1),
+            ),
+          );
+          return true;
+        }
+      }
+
+      // 8. Bill Preview (default: F7)
+      if (_matchesShortcutKey(event, 'billPreview')) {
+        if (_cart.isNotEmpty) {
+          _showCurrentCartBillPreview();
+          return true;
+        }
+      }
+
+      // 9. Apply Discount (default: F8)
+      if (_matchesShortcutKey(event, 'openDiscount')) {
+        _showInvoiceDiscountDialog();
+        return true;
+      }
+
+      // 10. Add Customer (default: F9)
+      if (_matchesShortcutKey(event, 'addCustomer')) {
+        _posCustomerSearchFocusNode.requestFocus();
+        return true;
+      }
     }
 
     return false;
@@ -5575,12 +5732,293 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _SettingsTabItem(key: 'profile', label: 'Profile', icon: Icons.person_rounded),
     _SettingsTabItem(key: 'company', label: 'Company & Store', icon: Icons.business_rounded),
     _SettingsTabItem(key: 'general', label: 'Store Operations', icon: Icons.tune_rounded),
+    _SettingsTabItem(key: 'shortcuts', label: 'Keyboard Shortcuts', icon: Icons.keyboard_rounded),
     _SettingsTabItem(key: 'print_settings', label: 'Receipt & Printing', icon: Icons.print_rounded),
     _SettingsTabItem(key: 'navigation', label: 'Navigation & Menu', icon: Icons.menu_open_rounded),
     _SettingsTabItem(key: 'preferences', label: 'Display & Preferences', icon: Icons.palette_rounded),
     _SettingsTabItem(key: 'notifications', label: 'Notifications', icon: Icons.notifications_rounded),
     _SettingsTabItem(key: 'payroll', label: 'Payroll & HR', icon: Icons.request_page_rounded),
   ];
+
+  static const Map<String, String> _defaultPosShortcuts = {
+    'completeSale': 'Enter',
+    'focusSearch': 'F1',
+    'payCash': 'F2',
+    'payCard': 'F3',
+    'holdCart': 'F4',
+    'resumeCart': 'F5',
+    'clearCart': 'F6',
+    'billPreview': 'F7',
+    'openDiscount': 'F8',
+    'addCustomer': 'F9',
+  };
+
+  Map<String, String> _posShortcuts = Map.from(_defaultPosShortcuts);
+
+  Future<void> _loadKeyboardShortcuts() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final loaded = <String, String>{};
+      for (final entry in _defaultPosShortcuts.entries) {
+        loaded[entry.key] = prefs.getString('pos_shortcut_${entry.key}') ?? entry.value;
+      }
+      if (mounted) {
+        setState(() {
+          _posShortcuts = loaded;
+        });
+      } else {
+        _posShortcuts = loaded;
+      }
+    } catch (e) {
+      debugPrint('Error loading keyboard shortcuts: $e');
+    }
+  }
+
+  Future<void> _saveKeyboardShortcut(String actionKey, String newKey) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('pos_shortcut_$actionKey', newKey);
+      if (mounted) {
+        setState(() {
+          _posShortcuts[actionKey] = newKey;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error saving keyboard shortcut: $e');
+    }
+  }
+
+  Future<void> _resetKeyboardShortcuts() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      for (final key in _defaultPosShortcuts.keys) {
+        await prefs.remove('pos_shortcut_$key');
+      }
+      if (mounted) {
+        setState(() {
+          _posShortcuts = Map.from(_defaultPosShortcuts);
+        });
+      }
+    } catch (e) {
+      debugPrint('Error resetting keyboard shortcuts: $e');
+    }
+  }
+
+  bool _matchesShortcutKey(KeyEvent event, String actionKey) {
+    final configured = _posShortcuts[actionKey] ?? _defaultPosShortcuts[actionKey];
+    if (configured == null || configured.trim().isEmpty) return false;
+
+    final key = event.logicalKey;
+    final normConfig = configured.trim().toUpperCase();
+
+    if (normConfig == 'ENTER' || normConfig == 'RETURN') {
+      return key == LogicalKeyboardKey.enter || key == LogicalKeyboardKey.numpadEnter;
+    }
+    if (normConfig == 'SPACE') {
+      return key == LogicalKeyboardKey.space;
+    }
+    if (normConfig == 'ESCAPE' || normConfig == 'ESC') {
+      return key == LogicalKeyboardKey.escape;
+    }
+    if (normConfig == 'TAB') {
+      return key == LogicalKeyboardKey.tab;
+    }
+    if (normConfig == 'BACKSPACE') {
+      return key == LogicalKeyboardKey.backspace;
+    }
+    if (normConfig == 'DELETE' || normConfig == 'DEL') {
+      return key == LogicalKeyboardKey.delete;
+    }
+    if (normConfig.startsWith('F')) {
+      final fNum = int.tryParse(normConfig.substring(1));
+      if (fNum != null && fNum >= 1 && fNum <= 12) {
+        final fKeys = [
+          LogicalKeyboardKey.f1,
+          LogicalKeyboardKey.f2,
+          LogicalKeyboardKey.f3,
+          LogicalKeyboardKey.f4,
+          LogicalKeyboardKey.f5,
+          LogicalKeyboardKey.f6,
+          LogicalKeyboardKey.f7,
+          LogicalKeyboardKey.f8,
+          LogicalKeyboardKey.f9,
+          LogicalKeyboardKey.f10,
+          LogicalKeyboardKey.f11,
+          LogicalKeyboardKey.f12,
+        ];
+        return key == fKeys[fNum - 1];
+      }
+    }
+
+    final label = key.keyLabel.trim().toUpperCase();
+    return label == normConfig;
+  }
+
+  Future<void> _showCaptureShortcutKeyDialog({
+    required String actionKey,
+    required String actionLabel,
+    required String sinhalaLabel,
+  }) async {
+    final currentKey = _posShortcuts[actionKey] ?? _defaultPosShortcuts[actionKey] ?? '';
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (dlgCtx) {
+        return Focus(
+          autofocus: true,
+          onKeyEvent: (node, event) {
+            if (event is! KeyDownEvent) return KeyEventResult.ignored;
+
+            final key = event.logicalKey;
+
+            if (key == LogicalKeyboardKey.escape) {
+              Navigator.pop(dlgCtx);
+              return KeyEventResult.handled;
+            }
+
+            if (key == LogicalKeyboardKey.shiftLeft ||
+                key == LogicalKeyboardKey.shiftRight ||
+                key == LogicalKeyboardKey.controlLeft ||
+                key == LogicalKeyboardKey.controlRight ||
+                key == LogicalKeyboardKey.altLeft ||
+                key == LogicalKeyboardKey.altRight ||
+                key == LogicalKeyboardKey.metaLeft ||
+                key == LogicalKeyboardKey.metaRight) {
+              return KeyEventResult.handled;
+            }
+
+            String keyName;
+            if (key == LogicalKeyboardKey.enter || key == LogicalKeyboardKey.numpadEnter) {
+              keyName = 'Enter';
+            } else if (key == LogicalKeyboardKey.space) {
+              keyName = 'Space';
+            } else if (key == LogicalKeyboardKey.tab) {
+              keyName = 'Tab';
+            } else if (key == LogicalKeyboardKey.backspace) {
+              keyName = 'Backspace';
+            } else if (key == LogicalKeyboardKey.delete) {
+              keyName = 'Delete';
+            } else if (key.keyLabel.startsWith('F') && key.keyLabel.length <= 3) {
+              keyName = key.keyLabel.toUpperCase();
+            } else {
+              keyName = key.keyLabel.toUpperCase();
+            }
+
+            if (keyName.trim().isEmpty) return KeyEventResult.ignored;
+
+            _saveKeyboardShortcut(actionKey, keyName);
+            Navigator.pop(dlgCtx);
+
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Shortcut set to [$keyName] for $actionLabel'),
+                backgroundColor: const Color(0xFF10B981),
+                duration: const Duration(seconds: 2),
+              ),
+            );
+            return KeyEventResult.handled;
+          },
+          child: AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF6366F1).withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.keyboard_rounded, color: Color(0xFF6366F1), size: 22),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(actionLabel, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      Text(sinhalaLabel, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            content: SizedBox(
+              width: 380,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(height: 10),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).brightness == Brightness.dark
+                          ? Colors.white10
+                          : const Color(0xFFF1F5F9),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: const Color(0xFF6366F1).withValues(alpha: 0.4), width: 1.5),
+                    ),
+                    child: Column(
+                      children: [
+                        const Icon(Icons.touch_app_rounded, size: 40, color: Color(0xFF6366F1)),
+                        const SizedBox(height: 12),
+                        const Text(
+                          'Press any key on your keyboard...',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'Keyboard එකේ ඔබ කැමති Key එකක් Press කරන්න (e.g. Enter, F1-F12, Space)',
+                          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 16),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text('Current Key: ', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF6366F1).withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: const Color(0xFF6366F1)),
+                              ),
+                              child: Text(
+                                currentKey,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontFamily: 'monospace',
+                                  color: Color(0xFF6366F1),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  Text(
+                    'Press ESC to cancel without changing',
+                    style: TextStyle(fontSize: 11.5, color: Colors.grey.shade500),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dlgCtx),
+                child: const Text('Cancel (අවලංගු කරන්න)'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
 
   Future<void> _exportReportsPdf() async {
     final totalRevenue = _sales.fold<double>(0, (sum, s) => sum + s.total);
@@ -10014,7 +10452,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
 
     return Container(
-      width: 272,
+      width: compact ? double.infinity : 272,
       decoration: const BoxDecoration(
         color: sidebarBackground,
         border: Border(right: BorderSide(color: Color(0x142F3550))),
@@ -14335,6 +14773,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             backgroundColor: colorScheme.surface,
             drawer: Drawer(
               width: 292,
+              backgroundColor: const Color(0xFF0F1020),
               child: _buildPlatformSidebar(state, compact: true),
             ),
             body: Column(
@@ -14420,7 +14859,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         : const Color(0xFFF5F6FF);
     return LayoutBuilder(
       builder: (context, constraints) {
-        final compactLayout = constraints.maxWidth < 1100;
+        final compactLayout = constraints.maxWidth < UiBreakpoints.tablet;
 
         if (!compactLayout) {
           return Row(
@@ -14447,7 +14886,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
           child: Scaffold(
             key: _mobileShellScaffoldKey,
             backgroundColor: shellBackground,
-            drawer: Drawer(width: 292, child: _buildMobileSidebar(state)),
+            drawer: Drawer(
+              width: 292,
+              backgroundColor: const Color(0xFF0D1525),
+              child: _buildMobileSidebar(state),
+            ),
             body: Column(
               children: [
                 _buildTopBar(
@@ -14476,156 +14919,158 @@ class _DashboardScreenState extends State<DashboardScreen> {
     const sidebarWidth = 256.0;
     return Container(
       width: sidebarWidth,
-      decoration: BoxDecoration(
-        gradient: UiGradients.sidebar,
-        border: Border(
-          right: BorderSide(color: Colors.white.withValues(alpha: 0.06)),
+      color: const Color(0xFF0D1525),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: UiGradients.sidebar,
+          border: Border(
+            right: BorderSide(color: Colors.white.withValues(alpha: 0.06)),
+          ),
         ),
-      ),
-      child: Column(
-        children: [
-          // ── Logo / Brand Header ──
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  const Color(0xFF070B14),
-                  AppTheme.brandIndigo.withValues(alpha: 0.18),
+        child: Column(
+          children: [
+            // ── Logo / Brand Header ──
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    const Color(0xFF070B14),
+                    AppTheme.brandIndigo.withValues(alpha: 0.18),
+                  ],
+                ),
+                border: Border(
+                  bottom: BorderSide(color: Colors.white.withValues(alpha: 0.07)),
+                ),
+              ),
+              child: Row(
+                children: [
+                  // Brand logo
+                  SizedBox(
+                    width: 40,
+                    height: 40,
+                    child: Image.asset(
+                      'assets/images/app_logo.png',
+                      fit: BoxFit.contain,
+                      errorBuilder: (_, __, ___) => Container(
+                        decoration: BoxDecoration(
+                          gradient: UiGradients.brand,
+                          borderRadius: BorderRadius.circular(12),
+                          boxShadow: UiShadows.glow,
+                        ),
+                        child: const Icon(
+                          Icons.storefront_rounded,
+                          color: Colors.white,
+                          size: 20,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        ShaderMask(
+                          blendMode: BlendMode.srcIn,
+                          shaderCallback: (bounds) =>
+                              UiGradients.brand.createShader(
+                                Rect.fromLTWH(0, 0, bounds.width, bounds.height),
+                              ),
+                          child: const Text(
+                            'Store Buddy',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 15,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 1),
+                        const Text(
+                          'POS Management',
+                          style: TextStyle(
+                            color: Color(0xFF64748B),
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w500,
+                            letterSpacing: 0.2,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
               ),
-              border: Border(
-                bottom: BorderSide(color: Colors.white.withValues(alpha: 0.07)),
-              ),
             ),
-            child: Row(
-              children: [
-                // Brand logo
-                SizedBox(
-                  width: 40,
-                  height: 40,
-                  child: Image.asset(
-                    'assets/images/app_logo.png',
-                    fit: BoxFit.contain,
-                    errorBuilder: (_, __, ___) => Container(
+            const SizedBox(height: 8),
+            // ── Navigation items ──
+            Expanded(
+              child: ListView.builder(
+                itemCount: visibleNavItems.length,
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                itemBuilder: (context, index) {
+                  final item = visibleNavItems[index];
+                  final selected = item.key == _selectedNavKey;
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 2),
+                    child: AnimatedContainer(
+                      duration: UiAnimations.standard,
+                      curve: UiAnimations.easeOut,
                       decoration: BoxDecoration(
-                        gradient: UiGradients.brand,
-                        borderRadius: BorderRadius.circular(12),
-                        boxShadow: UiShadows.glow,
-                      ),
-                      child: const Icon(
-                        Icons.storefront_rounded,
-                        color: Colors.white,
-                        size: 20,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      ShaderMask(
-                        blendMode: BlendMode.srcIn,
-                        shaderCallback: (bounds) =>
-                            UiGradients.brand.createShader(
-                              Rect.fromLTWH(0, 0, bounds.width, bounds.height),
-                            ),
-                        child: const Text(
-                          'Store Buddy',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w800,
-                            fontSize: 15,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 1),
-                      const Text(
-                        'POS Management',
-                        style: TextStyle(
-                          color: Color(0xFF64748B),
-                          fontSize: 10.5,
-                          fontWeight: FontWeight.w500,
-                          letterSpacing: 0.2,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 8),
-          // ── Navigation items ──
-          Expanded(
-            child: ListView.builder(
-              itemCount: visibleNavItems.length,
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              itemBuilder: (context, index) {
-                final item = visibleNavItems[index];
-                final selected = item.key == _selectedNavKey;
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 2),
-                  child: AnimatedContainer(
-                    duration: UiAnimations.standard,
-                    curve: UiAnimations.easeOut,
-                    decoration: BoxDecoration(
-                      gradient: selected ? UiGradients.brand : null,
-                      borderRadius: BorderRadius.circular(UiRadius.md),
-                      boxShadow: selected ? UiShadows.glow : null,
-                    ),
-                    child: Material(
-                      color: Colors.transparent,
-                      borderRadius: BorderRadius.circular(UiRadius.md),
-                      child: InkWell(
+                        color: selected ? const Color(0xFF4F46E5) : Colors.transparent,
                         borderRadius: BorderRadius.circular(UiRadius.md),
-                        onTap: () => setState(() => _selectedNavKey = item.key),
-                        overlayColor: WidgetStateProperty.all(
-                          Colors.white.withValues(alpha: 0.06),
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 11,
+                        boxShadow: selected ? UiShadows.glow : null,
+                      ),
+                      child: Material(
+                        color: Colors.transparent,
+                        borderRadius: BorderRadius.circular(UiRadius.md),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(UiRadius.md),
+                          onTap: () => setState(() => _selectedNavKey = item.key),
+                          overlayColor: WidgetStateProperty.all(
+                            Colors.white.withValues(alpha: 0.06),
                           ),
-                          child: Row(
-                            children: [
-                              Icon(
-                                item.icon,
-                                size: 17,
-                                color: selected
-                                    ? Colors.white
-                                    : const Color(0xFF64748B),
-                              ),
-                              const SizedBox(width: 11),
-                              Expanded(
-                                child: Text(
-                                  _navItemLabel(item),
-                                  style: TextStyle(
-                                    color: selected
-                                        ? Colors.white
-                                        : const Color(0xFF94A3B8),
-                                    fontWeight: selected
-                                        ? FontWeight.w700
-                                        : FontWeight.w500,
-                                    fontSize: 13.5,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 11,
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  item.icon,
+                                  size: 17,
+                                  color: selected
+                                      ? Colors.white
+                                      : const Color(0xFF94A3B8),
+                                ),
+                                const SizedBox(width: 11),
+                                Expanded(
+                                  child: Text(
+                                    _navItemLabel(item),
+                                    style: TextStyle(
+                                      color: selected
+                                          ? Colors.white
+                                          : const Color(0xFFCBD5E1),
+                                      fontWeight: selected
+                                          ? FontWeight.w700
+                                          : FontWeight.w500,
+                                      fontSize: 13.5,
+                                    ),
                                   ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
                       ),
                     ),
-                  ),
-                );
-              },
+                  );
+                },
+              ),
             ),
-          ),
           // ── User card / logout ──
           Divider(height: 1, color: Colors.white.withValues(alpha: 0.07)),
           Padding(
@@ -14705,7 +15150,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ],
       ),
-    );
+    ),
+  );
   }
 
   Widget _buildMobileSidebar(AuthAuthenticated state) {
@@ -14713,7 +15159,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final colorScheme = Theme.of(context).colorScheme;
     final sidebarAccent = colorScheme.tertiary;
     return Container(
-      decoration: BoxDecoration(color: const Color(0xFF101827)),
+      color: const Color(0xFF0D1525),
       child: Column(
         children: [
           Container(
@@ -14739,14 +15185,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     fit: BoxFit.contain,
                     errorBuilder: (_, __, ___) => Container(
                       decoration: BoxDecoration(
-                        color: sidebarAccent,
+                        color: AppTheme.brandIndigo,
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: const Center(
                         child: Text(
                           'S',
                           style: TextStyle(
-                            color: Color(0xFF101827),
+                            color: Colors.white,
                             fontWeight: FontWeight.w700,
                           ),
                         ),
@@ -14791,48 +15237,58 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 final item = visibleNavItems[index];
                 final selected = item.key == _selectedNavKey;
                 return Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Material(
-                    color: selected
-                        ? sidebarAccent.withValues(alpha: 0.16)
-                        : Colors.transparent,
-                    borderRadius: BorderRadius.circular(12),
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(12),
-                      onTap: () {
-                        Navigator.of(context).pop();
-                        setState(() => _selectedNavKey = item.key);
-                      },
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 12,
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: AnimatedContainer(
+                    duration: UiAnimations.standard,
+                    curve: UiAnimations.easeOut,
+                    decoration: BoxDecoration(
+                      color: selected ? const Color(0xFF4F46E5) : Colors.transparent,
+                      borderRadius: BorderRadius.circular(UiRadius.md),
+                      boxShadow: selected ? UiShadows.glow : null,
+                    ),
+                    child: Material(
+                      color: Colors.transparent,
+                      borderRadius: BorderRadius.circular(UiRadius.md),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(UiRadius.md),
+                        onTap: () {
+                          Navigator.of(context).pop();
+                          setState(() => _selectedNavKey = item.key);
+                        },
+                        overlayColor: WidgetStateProperty.all(
+                          Colors.white.withValues(alpha: 0.06),
                         ),
-                        child: Row(
-                          children: [
-                            Icon(
-                              item.icon,
-                              size: 20,
-                              color: selected
-                                  ? sidebarAccent
-                                  : const Color(0xFFB7C0CE),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                _navItemLabel(item),
-                                style: TextStyle(
-                                  color: selected
-                                      ? sidebarAccent
-                                      : const Color(0xFFD6DCE5),
-                                  fontWeight: selected
-                                      ? FontWeight.w700
-                                      : FontWeight.w500,
-                                  fontSize: 15,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 12,
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                item.icon,
+                                size: 19,
+                                color: selected
+                                    ? Colors.white
+                                    : const Color(0xFF94A3B8),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  _navItemLabel(item),
+                                  style: TextStyle(
+                                    color: selected
+                                        ? Colors.white
+                                        : const Color(0xFFCBD5E1),
+                                    fontWeight: selected
+                                        ? FontWeight.w700
+                                        : FontWeight.w500,
+                                    fontSize: 14,
+                                  ),
                                 ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                     ),
