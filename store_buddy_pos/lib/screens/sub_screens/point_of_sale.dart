@@ -5612,572 +5612,700 @@ extension _point_of_saleExt on _DashboardScreenState {
     // 4: Confirm Bill & Complete Sale
     int currentStep = 0;
     bool customerWasSkipped = false;
+    int highlightedCustomerIndex = 0;
 
     final FocusNode stepFocusNode = FocusNode();
     final FocusNode paidInputFocus = FocusNode();
+    final FocusNode customerSearchFocus = FocusNode();
 
-    return showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (dlgCtx) {
-        final isDark = Theme.of(dlgCtx).brightness == Brightness.dark;
+    StateSetter? dialogSetState;
+    BuildContext? activeDialogContext;
 
-        return StatefulBuilder(
-          builder: (context, setDlgState) {
-            final grandTotal = _calculateCurrentGrandTotal();
-            final rawPaid = double.tryParse(modalPaidController.text.trim()) ?? 0.0;
-            final changeAmount = (rawPaid - grandTotal).clamp(0.0, double.infinity);
-            final dueAmount = (grandTotal - rawPaid).clamp(0.0, double.infinity);
+    void onMethodChosen() {
+      final grandTotal = _calculateCurrentGrandTotal();
+      _applyPosPaymentMethod(currentMethod, grandTotal);
 
-            final selectedCustomer = _selectedCustomerId == null
-                ? _CustomerItem(
-                    id: 'C001',
-                    name: 'Walk-in Customer',
-                    locationId: _activeLocationForWrites,
-                    phone: 'N/A',
-                    email: '',
-                  )
-                : _scopedCustomers.firstWhere(
-                    (c) => c.id == _selectedCustomerId,
-                    orElse: () => _CustomerItem(
+      final isCreditOrCodOrInst =
+          currentMethod == 'CREDIT' || currentMethod == 'COD' || currentMethod == 'INSTALLMENT';
+
+      if (isCreditOrCodOrInst) {
+        customerWasSkipped = false;
+        highlightedCustomerIndex = 0;
+        dialogSetState?.call(() {
+          currentStep = 2; // Jump straight to Customer Selection
+        });
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          customerSearchFocus.requestFocus();
+        });
+      } else {
+        if (_selectedCustomerId != null) {
+          customerWasSkipped = false;
+          dialogSetState?.call(() {
+            currentStep = 3;
+          });
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            paidInputFocus.requestFocus();
+            modalPaidController.selection = TextSelection(
+              baseOffset: 0,
+              extentOffset: modalPaidController.text.length,
+            );
+          });
+        } else {
+          dialogSetState?.call(() {
+            currentStep = 1;
+          });
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            stepFocusNode.requestFocus();
+          });
+        }
+      }
+    }
+
+    void onCustomerPromptAnswer(bool wantsCustomer) {
+      if (wantsCustomer) {
+        customerWasSkipped = false;
+        highlightedCustomerIndex = 0;
+        dialogSetState?.call(() {
+          currentStep = 2;
+        });
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          customerSearchFocus.requestFocus();
+        });
+      } else {
+        customerWasSkipped = true;
+        dialogSetState?.call(() {
+          currentStep = 3;
+        });
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          paidInputFocus.requestFocus();
+          modalPaidController.selection = TextSelection(
+            baseOffset: 0,
+            extentOffset: modalPaidController.text.length,
+          );
+        });
+      }
+    }
+
+    void onCustomerStepNext() {
+      final isCreditOrCodOrInst =
+          currentMethod == 'CREDIT' || currentMethod == 'COD' || currentMethod == 'INSTALLMENT';
+
+      if (_selectedCustomerId == null) {
+        final query = modalCustomerSearchCtrl.text.trim().toLowerCase();
+        final matchingCustomers = query.isEmpty
+            ? _scopedCustomers.take(5).toList()
+            : _scopedCustomers.where((c) =>
+                c.name.toLowerCase().contains(query) ||
+                c.phone.toLowerCase().contains(query) ||
+                c.id.toLowerCase().contains(query)).take(5).toList();
+
+        if (matchingCustomers.isNotEmpty) {
+          final validIdx = highlightedCustomerIndex.clamp(0, matchingCustomers.length - 1);
+          final c = matchingCustomers[validIdx];
+          setState(() {
+            _selectedCustomerId = c.id;
+            _posCustomerSearchController.text =
+                '${c.name} (${c.phone.isEmpty ? 'N/A' : c.phone})';
+            if (c.discountPercent > 0) {
+              _posInvoiceDiscountType = 'PERCENT';
+              _posInvoiceDiscountValue = c.discountPercent;
+            }
+          });
+          dialogSetState?.call(() {});
+          return; // Customer is selected; user can inspect or press Enter again to advance to Tender
+        }
+      }
+
+      if (isCreditOrCodOrInst && _selectedCustomerId == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('$currentMethod සඳහා කරුණාකර Customer කෙනෙක් තෝරන්න හෝ "+ Add New Customer" ඔබන්න.'),
+            backgroundColor: Colors.deepOrange,
+          ),
+        );
+        return;
+      }
+
+      final grandTotal = _calculateCurrentGrandTotal();
+      if (currentMethod == 'CASH') {
+        if (modalPaidController.text.trim().isEmpty ||
+            double.tryParse(modalPaidController.text.trim()) == null ||
+            double.tryParse(modalPaidController.text.trim())! <= 0) {
+          modalPaidController.text = grandTotal.toStringAsFixed(2);
+        }
+      } else if (currentMethod == 'CREDIT') {
+        modalPaidController.text = '0.00';
+      } else {
+        modalPaidController.text = grandTotal.toStringAsFixed(2);
+      }
+
+      dialogSetState?.call(() {
+        currentStep = 3;
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        paidInputFocus.requestFocus();
+        modalPaidController.selection = TextSelection(
+          baseOffset: 0,
+          extentOffset: modalPaidController.text.length,
+        );
+      });
+    }
+
+    void onTenderStepNext() {
+      final grandTotal = _calculateCurrentGrandTotal();
+      final typed = double.tryParse(modalPaidController.text.trim());
+      if (currentMethod == 'CASH') {
+        if (typed == null || typed <= 0) {
+          modalPaidController.text = grandTotal.toStringAsFixed(2);
+        }
+      }
+
+      _paymentMethodController.text = currentMethod;
+      _amountPaidController.text = modalPaidController.text.trim();
+
+      dialogSetState?.call(() {
+        currentStep = 4;
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        stepFocusNode.requestFocus();
+      });
+    }
+
+    void completeFinal() {
+      _paymentMethodController.text = currentMethod;
+      _amountPaidController.text = modalPaidController.text.trim();
+      if (activeDialogContext != null && Navigator.canPop(activeDialogContext!)) {
+        Navigator.pop(activeDialogContext!, true);
+      }
+    }
+
+    void goBackOneStep() {
+      final isCreditOrCodOrInst =
+          currentMethod == 'CREDIT' || currentMethod == 'COD' || currentMethod == 'INSTALLMENT';
+
+      if (currentStep == 4) {
+        dialogSetState?.call(() => currentStep = 3);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          paidInputFocus.requestFocus();
+          modalPaidController.selection = TextSelection(
+            baseOffset: 0,
+            extentOffset: modalPaidController.text.length,
+          );
+        });
+      } else if (currentStep == 3) {
+        if (customerWasSkipped) {
+          dialogSetState?.call(() => currentStep = 1);
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            stepFocusNode.requestFocus();
+          });
+        } else if (isCreditOrCodOrInst || _selectedCustomerId != null) {
+          dialogSetState?.call(() => currentStep = 2);
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            customerSearchFocus.requestFocus();
+          });
+        } else {
+          dialogSetState?.call(() => currentStep = 0);
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            stepFocusNode.requestFocus();
+          });
+        }
+      } else if (currentStep == 2) {
+        if (isCreditOrCodOrInst) {
+          dialogSetState?.call(() => currentStep = 0);
+        } else {
+          dialogSetState?.call(() => currentStep = 1);
+        }
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          stepFocusNode.requestFocus();
+        });
+      } else if (currentStep == 1) {
+        dialogSetState?.call(() => currentStep = 0);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          stepFocusNode.requestFocus();
+        });
+      } else {
+        if (activeDialogContext != null && Navigator.canPop(activeDialogContext!)) {
+          Navigator.pop(activeDialogContext!, false);
+        }
+      }
+    }
+
+    paidInputFocus.onKeyEvent = (node, event) {
+      if (event is KeyDownEvent &&
+          (event.logicalKey == LogicalKeyboardKey.enter ||
+           event.logicalKey == LogicalKeyboardKey.numpadEnter)) {
+        onTenderStepNext();
+        return KeyEventResult.handled;
+      }
+      return KeyEventResult.ignored;
+    };
+
+    bool handleHardwareKey(KeyEvent event) {
+      if (event is! KeyDownEvent) return false;
+
+      if (event.logicalKey == LogicalKeyboardKey.escape) {
+        goBackOneStep();
+        return true;
+      }
+
+      if (event.logicalKey == LogicalKeyboardKey.enter ||
+          event.logicalKey == LogicalKeyboardKey.numpadEnter) {
+        if (currentStep == 0) {
+          onMethodChosen();
+          return true;
+        } else if (currentStep == 1) {
+          onCustomerPromptAnswer(false);
+          return true;
+        } else if (currentStep == 2) {
+          onCustomerStepNext();
+          return true;
+        } else if (currentStep == 3) {
+          onTenderStepNext();
+          return true;
+        } else if (currentStep == 4) {
+          completeFinal();
+          return true;
+        }
+      }
+
+      if (currentStep == 0) {
+        final currentIdx = availableMethods.indexOf(currentMethod);
+        final count = availableMethods.length;
+        const cols = 3;
+
+        if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
+          final nextIdx = (currentIdx + 1) % count;
+          currentMethod = availableMethods[nextIdx];
+          dialogSetState?.call(() {});
+          return true;
+        } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+          final prevIdx = (currentIdx - 1 + count) % count;
+          currentMethod = availableMethods[prevIdx];
+          dialogSetState?.call(() {});
+          return true;
+        } else if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+          int nextIdx = currentIdx + cols;
+          if (nextIdx >= count) {
+            nextIdx = currentIdx % cols;
+          }
+          currentMethod = availableMethods[nextIdx];
+          dialogSetState?.call(() {});
+          return true;
+        } else if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+          int nextIdx = currentIdx - cols;
+          if (nextIdx < 0) {
+            final wrapped = currentIdx + cols;
+            nextIdx = wrapped < count ? wrapped : currentIdx;
+          }
+          currentMethod = availableMethods[nextIdx];
+          dialogSetState?.call(() {});
+          return true;
+        } else if ((event.logicalKey == LogicalKeyboardKey.digit1 ||
+                    event.logicalKey == LogicalKeyboardKey.numpad1) &&
+                   count > 0) {
+          currentMethod = availableMethods[0];
+          dialogSetState?.call(() {});
+          return true;
+        } else if ((event.logicalKey == LogicalKeyboardKey.digit2 ||
+                    event.logicalKey == LogicalKeyboardKey.numpad2) &&
+                   count > 1) {
+          currentMethod = availableMethods[1];
+          dialogSetState?.call(() {});
+          return true;
+        } else if ((event.logicalKey == LogicalKeyboardKey.digit3 ||
+                    event.logicalKey == LogicalKeyboardKey.numpad3) &&
+                   count > 2) {
+          currentMethod = availableMethods[2];
+          dialogSetState?.call(() {});
+          return true;
+        } else if ((event.logicalKey == LogicalKeyboardKey.digit4 ||
+                    event.logicalKey == LogicalKeyboardKey.numpad4) &&
+                   count > 3) {
+          currentMethod = availableMethods[3];
+          dialogSetState?.call(() {});
+          return true;
+        } else if ((event.logicalKey == LogicalKeyboardKey.digit5 ||
+                    event.logicalKey == LogicalKeyboardKey.numpad5) &&
+                   count > 4) {
+          currentMethod = availableMethods[4];
+          dialogSetState?.call(() {});
+          return true;
+        } else if ((event.logicalKey == LogicalKeyboardKey.digit6 ||
+                    event.logicalKey == LogicalKeyboardKey.numpad6) &&
+                   count > 5) {
+          currentMethod = availableMethods[5];
+          dialogSetState?.call(() {});
+          return true;
+        }
+      } else if (currentStep == 1) {
+        if (event.logicalKey == LogicalKeyboardKey.keyN) {
+          onCustomerPromptAnswer(false);
+          return true;
+        } else if (event.logicalKey == LogicalKeyboardKey.keyY) {
+          onCustomerPromptAnswer(true);
+          return true;
+        }
+      } else if (currentStep == 2) {
+        if (_selectedCustomerId == null) {
+          final query = modalCustomerSearchCtrl.text.trim().toLowerCase();
+          final matchingCustomers = query.isEmpty
+              ? _scopedCustomers.take(5).toList()
+              : _scopedCustomers.where((c) =>
+                  c.name.toLowerCase().contains(query) ||
+                  c.phone.toLowerCase().contains(query) ||
+                  c.id.toLowerCase().contains(query)).take(5).toList();
+
+          if (matchingCustomers.isNotEmpty) {
+            if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+              highlightedCustomerIndex = (highlightedCustomerIndex + 1) % matchingCustomers.length;
+              dialogSetState?.call(() {});
+              return true;
+            } else if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+              highlightedCustomerIndex = (highlightedCustomerIndex - 1 + matchingCustomers.length) % matchingCustomers.length;
+              dialogSetState?.call(() {});
+              return true;
+            }
+          }
+        }
+      }
+
+      return false;
+    }
+
+    HardwareKeyboard.instance.addHandler(handleHardwareKey);
+
+    bool? dialogResult;
+    try {
+      dialogResult = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dlgCtx) {
+          activeDialogContext = dlgCtx;
+          final isDark = Theme.of(dlgCtx).brightness == Brightness.dark;
+
+          return StatefulBuilder(
+            builder: (context, setDlgState) {
+              dialogSetState = setDlgState;
+              final grandTotal = _calculateCurrentGrandTotal();
+              final rawPaid = double.tryParse(modalPaidController.text.trim()) ?? 0.0;
+              final changeAmount = (rawPaid - grandTotal).clamp(0.0, double.infinity);
+              final dueAmount = (grandTotal - rawPaid).clamp(0.0, double.infinity);
+
+              final selectedCustomer = _selectedCustomerId == null
+                  ? _CustomerItem(
                       id: 'C001',
                       name: 'Walk-in Customer',
                       locationId: _activeLocationForWrites,
                       phone: 'N/A',
                       email: '',
-                    ),
-                  );
-
-            final isCreditOrCodOrInst =
-                currentMethod == 'CREDIT' || currentMethod == 'COD' || currentMethod == 'INSTALLMENT';
-
-            // Navigation helpers
-            void onMethodChosen() {
-              _applyPosPaymentMethod(currentMethod, grandTotal);
-
-              if (isCreditOrCodOrInst) {
-                // Customer is mandatory
-                customerWasSkipped = false;
-                setDlgState(() {
-                  currentStep = 2; // Jump straight to Customer Selection
-                });
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  stepFocusNode.requestFocus();
-                });
-              } else {
-                // Cash / Card / Cheque
-                if (_selectedCustomerId != null) {
-                  // Customer already selected -> go straight to Tender
-                  customerWasSkipped = false;
-                  setDlgState(() {
-                    currentStep = 3;
-                  });
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    paidInputFocus.requestFocus();
-                    modalPaidController.selection = TextSelection(
-                      baseOffset: 0,
-                      extentOffset: modalPaidController.text.length,
+                    )
+                  : _scopedCustomers.firstWhere(
+                      (c) => c.id == _selectedCustomerId,
+                      orElse: () => _CustomerItem(
+                        id: 'C001',
+                        name: 'Walk-in Customer',
+                        locationId: _activeLocationForWrites,
+                        phone: 'N/A',
+                        email: '',
+                      ),
                     );
-                  });
-                } else {
-                  // Ask "Customer kenek add karanawada? (Ow / Na)"
-                  setDlgState(() {
-                    currentStep = 1;
-                  });
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    stepFocusNode.requestFocus();
-                  });
+
+              IconData getMethodIcon(String k) {
+                switch (k.toUpperCase()) {
+                  case 'CASH':
+                    return Icons.payments_outlined;
+                  case 'CARD':
+                    return Icons.credit_card_outlined;
+                  case 'CHEQUE':
+                    return Icons.sticky_note_2_outlined;
+                  case 'CREDIT':
+                    return Icons.badge_outlined;
+                  case 'INSTALLMENT':
+                    return Icons.calendar_month_outlined;
+                  case 'COD':
+                    return Icons.local_shipping_outlined;
+                  default:
+                    return Icons.payment_outlined;
                 }
               }
-            }
 
-            void onCustomerPromptAnswer(bool wantsCustomer) {
-              if (wantsCustomer) {
-                customerWasSkipped = false;
-                setDlgState(() {
-                  currentStep = 2;
-                });
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  stepFocusNode.requestFocus();
-                });
-              } else {
-                customerWasSkipped = true;
-                setDlgState(() {
-                  currentStep = 3;
-                });
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  paidInputFocus.requestFocus();
-                  modalPaidController.selection = TextSelection(
-                    baseOffset: 0,
-                    extentOffset: modalPaidController.text.length,
-                  );
-                });
-              }
-            }
-
-            void onCustomerStepNext() {
-              if (isCreditOrCodOrInst && _selectedCustomerId == null) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('$currentMethod සඳහා කරුණාකර Customer කෙනෙක් තෝරන්න හෝ "+ Add New Customer" ඔබන්න.'),
-                    backgroundColor: Colors.deepOrange,
+              return Focus(
+                focusNode: stepFocusNode,
+                autofocus: true,
+                child: AlertDialog(
+                  backgroundColor: isDark ? const Color(0xFF0F172A) : Colors.white,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  titlePadding: const EdgeInsets.fromLTRB(20, 18, 20, 12),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                  actionsPadding: const EdgeInsets.fromLTRB(20, 12, 20, 18),
+                  title: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: AppTheme.brandIndigo.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: Icon(
+                              currentStep == 0
+                                  ? Icons.credit_card_rounded
+                                  : currentStep == 1 || currentStep == 2
+                                      ? Icons.person_rounded
+                                      : currentStep == 3
+                                          ? Icons.point_of_sale_rounded
+                                          : Icons.task_alt_rounded,
+                              color: AppTheme.brandIndigo,
+                              size: 22,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  currentStep == 0
+                                      ? '1. Payment Method (ගෙවීම් ක්‍රමය)'
+                                      : currentStep == 1
+                                          ? '2. Customer Confirmation'
+                                          : currentStep == 2
+                                              ? '2. Customer Details (පාරිභෝගිකයා)'
+                                              : currentStep == 3
+                                                  ? '3. Tender & Payment (ගෙවීම)'
+                                                  : '4. Confirm Bill (බිල්පත තහවුරු කිරීම)',
+                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  currentStep == 0
+                                      ? 'ගෙවීම් ක්‍රමය තෝරා Enter ඔබන්න'
+                                      : currentStep == 1
+                                          ? 'Customer කෙනෙක් ඇතුළත් කරනවාද? (Ow/Na)'
+                                          : currentStep == 2
+                                              ? '$currentMethod සඳහා පාරිභෝගික තොරතුරු තෝරන්න හෝ එක් කරන්න'
+                                              : currentStep == 3
+                                                  ? 'ගෙවූ මුදල (Amount Paid) තහවුරු කර Enter ඔබන්න'
+                                                  : 'බිල්පතේ විස්තර පරීක්ෂා කර සම්පූර්ණ කරන්න',
+                                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+                              ),
+                            ),
+                            child: Text(
+                              _money(grandTotal),
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.bold,
+                                color: AppTheme.brandIndigo,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          _buildStepProgressChip('1. Payment', currentStep > 0, currentStep == 0, isDark),
+                          _buildStepProgressDivider(currentStep > 0, isDark),
+                          _buildStepProgressChip('2. Customer', currentStep > 2, currentStep == 1 || currentStep == 2, isDark),
+                          _buildStepProgressDivider(currentStep > 2, isDark),
+                          _buildStepProgressChip('3. Tender', currentStep > 3, currentStep == 3, isDark),
+                          _buildStepProgressDivider(currentStep > 3, isDark),
+                          _buildStepProgressChip('4. Confirm', currentStep == 4, currentStep == 4, isDark),
+                        ],
+                      ),
+                    ],
                   ),
-                );
-                return;
-              }
-
-              // Set default paid based on method
-              if (currentMethod == 'CASH') {
-                if (modalPaidController.text.trim().isEmpty ||
-                    double.tryParse(modalPaidController.text.trim()) == null ||
-                    double.tryParse(modalPaidController.text.trim())! <= 0) {
-                  modalPaidController.text = grandTotal.toStringAsFixed(2);
-                }
-              } else if (currentMethod == 'CREDIT') {
-                modalPaidController.text = '0.00';
-              } else {
-                modalPaidController.text = grandTotal.toStringAsFixed(2);
-              }
-
-              setDlgState(() {
-                currentStep = 3;
-              });
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                paidInputFocus.requestFocus();
-                modalPaidController.selection = TextSelection(
-                  baseOffset: 0,
-                  extentOffset: modalPaidController.text.length,
-                );
-              });
-            }
-
-            void onTenderStepNext() {
-              final typed = double.tryParse(modalPaidController.text.trim());
-              if (currentMethod == 'CASH') {
-                if (typed == null || typed <= 0) {
-                  modalPaidController.text = grandTotal.toStringAsFixed(2);
-                }
-              }
-
-              _paymentMethodController.text = currentMethod;
-              _amountPaidController.text = modalPaidController.text.trim();
-
-              setDlgState(() {
-                currentStep = 4;
-              });
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                stepFocusNode.requestFocus();
-              });
-            }
-
-            void completeFinal() {
-              _paymentMethodController.text = currentMethod;
-              _amountPaidController.text = modalPaidController.text.trim();
-              Navigator.pop(dlgCtx, true);
-            }
-
-            void goBackOneStep() {
-              if (currentStep == 4) {
-                setDlgState(() => currentStep = 3);
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  paidInputFocus.requestFocus();
-                  modalPaidController.selection = TextSelection(
-                    baseOffset: 0,
-                    extentOffset: modalPaidController.text.length,
-                  );
-                });
-              } else if (currentStep == 3) {
-                if (customerWasSkipped) {
-                  setDlgState(() => currentStep = 1);
-                } else if (isCreditOrCodOrInst || _selectedCustomerId != null) {
-                  setDlgState(() => currentStep = 2);
-                } else {
-                  setDlgState(() => currentStep = 0);
-                }
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  stepFocusNode.requestFocus();
-                });
-              } else if (currentStep == 2) {
-                if (isCreditOrCodOrInst) {
-                  setDlgState(() => currentStep = 0);
-                } else {
-                  setDlgState(() => currentStep = 1);
-                }
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  stepFocusNode.requestFocus();
-                });
-              } else if (currentStep == 1) {
-                setDlgState(() => currentStep = 0);
-                WidgetsBinding.instance.addPostFrameCallback((_) {
-                  stepFocusNode.requestFocus();
-                });
-              } else {
-                Navigator.pop(dlgCtx, false);
-              }
-            }
-
-            IconData getMethodIcon(String k) {
-              switch (k.toUpperCase()) {
-                case 'CASH':
-                  return Icons.payments_outlined;
-                case 'CARD':
-                  return Icons.credit_card_outlined;
-                case 'CHEQUE':
-                  return Icons.sticky_note_2_outlined;
-                case 'CREDIT':
-                  return Icons.badge_outlined;
-                case 'INSTALLMENT':
-                  return Icons.calendar_month_outlined;
-                case 'COD':
-                  return Icons.local_shipping_outlined;
-                default:
-                  return Icons.payment_outlined;
-              }
-            }
-
-            return Focus(
-              focusNode: stepFocusNode,
-              autofocus: true,
-              onKeyEvent: (node, event) {
-                if (event is! KeyDownEvent) return KeyEventResult.ignored;
-
-                if (event.logicalKey == LogicalKeyboardKey.escape) {
-                  goBackOneStep();
-                  return KeyEventResult.handled;
-                }
-
-                if (currentStep == 0) {
-                  // Step 0: Payment Method
-                  final currentIdx = availableMethods.indexOf(currentMethod);
-                  if (event.logicalKey == LogicalKeyboardKey.arrowRight ||
-                      event.logicalKey == LogicalKeyboardKey.arrowDown) {
-                    final nextIdx = (currentIdx + 1) % availableMethods.length;
-                    setDlgState(() => currentMethod = availableMethods[nextIdx]);
-                    return KeyEventResult.handled;
-                  } else if (event.logicalKey == LogicalKeyboardKey.arrowLeft ||
-                             event.logicalKey == LogicalKeyboardKey.arrowUp) {
-                    final prevIdx = (currentIdx - 1 + availableMethods.length) % availableMethods.length;
-                    setDlgState(() => currentMethod = availableMethods[prevIdx]);
-                    return KeyEventResult.handled;
-                  } else if (event.logicalKey == LogicalKeyboardKey.digit1 && availableMethods.isNotEmpty) {
-                    setDlgState(() => currentMethod = availableMethods[0]);
-                    return KeyEventResult.handled;
-                  } else if (event.logicalKey == LogicalKeyboardKey.digit2 && availableMethods.length > 1) {
-                    setDlgState(() => currentMethod = availableMethods[1]);
-                    return KeyEventResult.handled;
-                  } else if (event.logicalKey == LogicalKeyboardKey.digit3 && availableMethods.length > 2) {
-                    setDlgState(() => currentMethod = availableMethods[2]);
-                    return KeyEventResult.handled;
-                  } else if (event.logicalKey == LogicalKeyboardKey.digit4 && availableMethods.length > 3) {
-                    setDlgState(() => currentMethod = availableMethods[3]);
-                    return KeyEventResult.handled;
-                  } else if (event.logicalKey == LogicalKeyboardKey.digit5 && availableMethods.length > 4) {
-                    setDlgState(() => currentMethod = availableMethods[4]);
-                    return KeyEventResult.handled;
-                  } else if (event.logicalKey == LogicalKeyboardKey.digit6 && availableMethods.length > 5) {
-                    setDlgState(() => currentMethod = availableMethods[5]);
-                    return KeyEventResult.handled;
-                  } else if (event.logicalKey == LogicalKeyboardKey.enter ||
-                             event.logicalKey == LogicalKeyboardKey.numpadEnter) {
-                    onMethodChosen();
-                    return KeyEventResult.handled;
-                  }
-                } else if (currentStep == 1) {
-                  // Step 1: Customer Prompt (Ow / Na?)
-                  if (event.logicalKey == LogicalKeyboardKey.enter ||
-                      event.logicalKey == LogicalKeyboardKey.numpadEnter ||
-                      event.logicalKey == LogicalKeyboardKey.keyN) {
-                    onCustomerPromptAnswer(false);
-                    return KeyEventResult.handled;
-                  } else if (event.logicalKey == LogicalKeyboardKey.keyY) {
-                    onCustomerPromptAnswer(true);
-                    return KeyEventResult.handled;
-                  }
-                } else if (currentStep == 2) {
-                  // Step 2: Customer Selection
-                  if (event.logicalKey == LogicalKeyboardKey.enter ||
-                      event.logicalKey == LogicalKeyboardKey.numpadEnter) {
-                    onCustomerStepNext();
-                    return KeyEventResult.handled;
-                  }
-                } else if (currentStep == 3) {
-                  // Step 3: Tender
-                  if (event.logicalKey == LogicalKeyboardKey.enter ||
-                      event.logicalKey == LogicalKeyboardKey.numpadEnter) {
-                    onTenderStepNext();
-                    return KeyEventResult.handled;
-                  }
-                } else if (currentStep == 4) {
-                  // Step 4: Confirm
-                  if (event.logicalKey == LogicalKeyboardKey.enter ||
-                      event.logicalKey == LogicalKeyboardKey.numpadEnter) {
-                    completeFinal();
-                    return KeyEventResult.handled;
-                  }
-                }
-
-                return KeyEventResult.ignored;
-              },
-              child: AlertDialog(
-                backgroundColor: isDark ? const Color(0xFF0F172A) : Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                titlePadding: const EdgeInsets.fromLTRB(20, 18, 20, 12),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                actionsPadding: const EdgeInsets.fromLTRB(20, 12, 20, 18),
-                title: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: AppTheme.brandIndigo.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: Icon(
-                            currentStep == 0
-                                ? Icons.credit_card_rounded
-                                : currentStep == 1 || currentStep == 2
-                                    ? Icons.person_rounded
-                                    : currentStep == 3
-                                        ? Icons.point_of_sale_rounded
-                                        : Icons.task_alt_rounded,
-                            color: AppTheme.brandIndigo,
-                            size: 22,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                currentStep == 0
-                                    ? '1. Select Payment Method'
-                                    : currentStep == 1
-                                        ? '2. Add Customer? (පාරිභෝගිකයා)'
-                                        : currentStep == 2
-                                            ? '2. Customer Details (පාරිභෝගිකයා)'
-                                            : currentStep == 3
-                                                ? '3. Tender & Payment (ගෙවීම)'
-                                                : '4. Confirm & Complete Sale',
-                                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                              ),
-                              Text(
-                                currentStep == 0
-                                    ? 'ගෙවීම් ක්‍රමය තෝරා Enter ඔබන්න'
-                                    : currentStep == 1
-                                        ? 'බිල්පතට Customer කෙනෙකු එක් කරනවාද? නැත (Enter) / ඔව් (Y)'
-                                        : currentStep == 2
-                                            ? 'Customer තෝරා හෝ අලුතින් එක් කර Enter ඔබන්න'
-                                            : currentStep == 3
-                                                ? 'ගෙවූ මුදල (Amount Paid) තහවුරු කර Enter ඔබන්න'
-                                                : 'බිල්පත සම්පූර්ණ කර අවසන් කිරීමට Enter ඔබන්න',
-                                style: const TextStyle(fontSize: 11.5, color: Colors.grey),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                          decoration: BoxDecoration(
-                            color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
-                            ),
-                          ),
-                          child: Text(
-                            _money(grandTotal),
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 14,
-                              color: Color(0xFF6366F1),
-                            ),
-                          ),
-                        ),
-                      ],
+                  content: SizedBox(
+                    width: 530,
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 200),
+                      child: currentStep == 0
+                          ? _buildStep0PaymentMethods(
+                              methods: availableMethods,
+                              selected: currentMethod,
+                              grandTotal: grandTotal,
+                              isDark: isDark,
+                              onSelect: (m) {
+                                currentMethod = m;
+                                onMethodChosen();
+                              },
+                              getIcon: getMethodIcon,
+                            )
+                          : currentStep == 1
+                              ? _buildStep1CustomerPrompt(
+                                  isDark: isDark,
+                                  onSkip: () => onCustomerPromptAnswer(false),
+                                  onAddCustomer: () => onCustomerPromptAnswer(true),
+                                )
+                              : currentStep == 2
+                                  ? _buildStep2CustomerDetails(
+                                      currentMethod: currentMethod,
+                                      selectedCustomer: selectedCustomer,
+                                      isDark: isDark,
+                                      grandTotal: grandTotal,
+                                      searchController: modalCustomerSearchCtrl,
+                                      searchFocusNode: customerSearchFocus,
+                                      highlightedCustomerIndex: highlightedCustomerIndex,
+                                      setDlgState: setDlgState,
+                                      onCustomerPicked: (c) {
+                                        setState(() {
+                                          _selectedCustomerId = c.id;
+                                          _posCustomerSearchController.text =
+                                              '${c.name} (${c.phone.isEmpty ? 'N/A' : c.phone})';
+                                          if (c.discountPercent > 0) {
+                                            _posInvoiceDiscountType = 'PERCENT';
+                                            _posInvoiceDiscountValue = c.discountPercent;
+                                          }
+                                        });
+                                        setDlgState(() {});
+                                      },
+                                      onAddNewCustomer: () async {
+                                        final c = await _handleAddNewCustomerFromPos();
+                                        if (c != null) {
+                                          setDlgState(() {});
+                                        }
+                                      },
+                                      onRemoveCustomer: () {
+                                        setState(() {
+                                          _selectedCustomerId = null;
+                                          _posCustomerSearchController.clear();
+                                        });
+                                        highlightedCustomerIndex = 0;
+                                        setDlgState(() {});
+                                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                                          customerSearchFocus.requestFocus();
+                                        });
+                                      },
+                                      onSubmitted: (_) => onCustomerStepNext(),
+                                    )
+                                  : currentStep == 3
+                                      ? _buildStep3TenderInput(
+                                          method: currentMethod,
+                                          grandTotal: grandTotal,
+                                          paidController: modalPaidController,
+                                          paidInputFocus: paidInputFocus,
+                                          rawPaid: rawPaid,
+                                          changeAmount: changeAmount,
+                                          dueAmount: dueAmount,
+                                          isDark: isDark,
+                                          onExact: () {
+                                            modalPaidController.text = grandTotal.toStringAsFixed(2);
+                                            setDlgState(() {});
+                                          },
+                                          onChip: (val) {
+                                            modalPaidController.text = val.toStringAsFixed(2);
+                                            setDlgState(() {});
+                                          },
+                                          onSubmitted: (_) => onTenderStepNext(),
+                                          setDlgState: setDlgState,
+                                          selectedCustomer: selectedCustomer,
+                                        )
+                                      : _buildStep4BillConfirmation(
+                                          method: currentMethod,
+                                          grandTotal: grandTotal,
+                                          rawPaid: rawPaid,
+                                          changeAmount: changeAmount,
+                                          dueAmount: dueAmount,
+                                          isDark: isDark,
+                                          selectedCustomer: selectedCustomer,
+                                          cartItemCount: _cart.length,
+                                        ),
                     ),
-                    const SizedBox(height: 12),
-                    // Stepper chips
-                    Row(
-                      children: [
-                        _buildStepProgressChip('1. Payment', currentStep >= 0, currentStep == 0, isDark),
-                        const SizedBox(width: 6),
-                        _buildStepProgressDivider(currentStep >= 1, isDark),
-                        const SizedBox(width: 6),
-                        _buildStepProgressChip('2. Customer', currentStep >= 1, currentStep == 1 || currentStep == 2, isDark),
-                        const SizedBox(width: 6),
-                        _buildStepProgressDivider(currentStep >= 3, isDark),
-                        const SizedBox(width: 6),
-                        _buildStepProgressChip('3. Tender', currentStep >= 3, currentStep == 3, isDark),
-                        const SizedBox(width: 6),
-                        _buildStepProgressDivider(currentStep >= 4, isDark),
-                        const SizedBox(width: 6),
-                        _buildStepProgressChip('4. Confirm', currentStep >= 4, currentStep == 4, isDark),
-                      ],
+                  ),
+                  actions: [
+                    TextButton.icon(
+                      onPressed: goBackOneStep,
+                      icon: Icon(
+                        currentStep > 0 ? Icons.arrow_back_rounded : Icons.close_rounded,
+                        size: 16,
+                      ),
+                      label: Text(
+                        currentStep > 0
+                            ? 'Back (Esc) • ආපසු'
+                            : 'Cancel (Esc) • අවලංගු කරන්න',
+                      ),
                     ),
+                    if (currentStep == 0)
+                      ElevatedButton.icon(
+                        onPressed: onMethodChosen,
+                        icon: const Icon(Icons.arrow_forward_rounded, size: 16),
+                        label: const Text('Next (Enter) • ඉදිරියට'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.brandIndigo,
+                          foregroundColor: Colors.white,
+                        ),
+                      )
+                    else if (currentStep == 1)
+                      ElevatedButton.icon(
+                        onPressed: () => onCustomerPromptAnswer(false),
+                        icon: const Icon(Icons.flash_on_rounded, size: 16),
+                        label: const Text('Skip (Enter) • නැත'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.brandIndigo,
+                          foregroundColor: Colors.white,
+                        ),
+                      )
+                    else if (currentStep == 2)
+                      ElevatedButton.icon(
+                        onPressed: onCustomerStepNext,
+                        icon: const Icon(Icons.arrow_forward_rounded, size: 16),
+                        label: const Text('Next: Tender (Enter) • ඉදිරියට'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.brandIndigo,
+                          foregroundColor: Colors.white,
+                        ),
+                      )
+                    else if (currentStep == 3)
+                      ElevatedButton.icon(
+                        onPressed: onTenderStepNext,
+                        icon: const Icon(Icons.arrow_forward_rounded, size: 16),
+                        label: const Text('Next: Confirm (Enter) • ඉදිරියට'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.brandIndigo,
+                          foregroundColor: Colors.white,
+                        ),
+                      )
+                    else
+                      ElevatedButton.icon(
+                        onPressed: completeFinal,
+                        icon: const Icon(Icons.check_circle_outline_rounded, size: 18),
+                        label: Text('Complete Sale (Enter) • ${_money(grandTotal)}'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF10B981),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                          textStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                        ),
+                      ),
                   ],
                 ),
-                content: SizedBox(
-                  width: 530,
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 200),
-                    child: currentStep == 0
-                        ? _buildStep0PaymentMethods(
-                            methods: availableMethods,
-                            selected: currentMethod,
-                            grandTotal: grandTotal,
-                            isDark: isDark,
-                            onSelect: (m) {
-                              setDlgState(() => currentMethod = m);
-                              onMethodChosen();
-                            },
-                            getIcon: getMethodIcon,
-                          )
-                        : currentStep == 1
-                            ? _buildStep1CustomerPrompt(
-                                isDark: isDark,
-                                onSkip: () => onCustomerPromptAnswer(false),
-                                onAddCustomer: () => onCustomerPromptAnswer(true),
-                              )
-                            : currentStep == 2
-                                ? _buildStep2CustomerDetails(
-                                    currentMethod: currentMethod,
-                                    selectedCustomer: selectedCustomer,
-                                    isDark: isDark,
-                                    grandTotal: grandTotal,
-                                    searchController: modalCustomerSearchCtrl,
-                                    setDlgState: setDlgState,
-                                    onCustomerPicked: (c) {
-                                      setState(() {
-                                        _selectedCustomerId = c.id;
-                                        _posCustomerSearchController.text =
-                                            '${c.name} (${c.phone.isEmpty ? 'N/A' : c.phone})';
-                                      });
-                                      setDlgState(() {});
-                                    },
-                                    onAddNewCustomer: () async {
-                                      final c = await _handleAddNewCustomerFromPos();
-                                      if (c != null) {
-                                        setDlgState(() {});
-                                      }
-                                    },
-                                    onRemoveCustomer: () {
-                                      setState(() {
-                                        _selectedCustomerId = null;
-                                        _posCustomerSearchController.clear();
-                                      });
-                                      setDlgState(() {});
-                                    },
-                                  )
-                                : currentStep == 3
-                                    ? _buildStep3TenderInput(
-                                        method: currentMethod,
-                                        grandTotal: grandTotal,
-                                        paidController: modalPaidController,
-                                        paidInputFocus: paidInputFocus,
-                                        rawPaid: rawPaid,
-                                        changeAmount: changeAmount,
-                                        dueAmount: dueAmount,
-                                        isDark: isDark,
-                                        onExact: () {
-                                          modalPaidController.text = grandTotal.toStringAsFixed(2);
-                                          setDlgState(() {});
-                                        },
-                                        onChip: (val) {
-                                          modalPaidController.text = val.toStringAsFixed(2);
-                                          setDlgState(() {});
-                                        },
-                                        onSubmitted: (_) => onTenderStepNext(),
-                                        setDlgState: setDlgState,
-                                        selectedCustomer: selectedCustomer,
-                                      )
-                                    : _buildStep4BillConfirmation(
-                                        method: currentMethod,
-                                        grandTotal: grandTotal,
-                                        rawPaid: rawPaid,
-                                        changeAmount: changeAmount,
-                                        dueAmount: dueAmount,
-                                        isDark: isDark,
-                                        selectedCustomer: selectedCustomer,
-                                        cartItemCount: _cart.length,
-                                      ),
-                  ),
-                ),
-                actions: [
-                  TextButton.icon(
-                    onPressed: goBackOneStep,
-                    icon: Icon(
-                      currentStep > 0 ? Icons.arrow_back_rounded : Icons.close_rounded,
-                      size: 16,
-                    ),
-                    label: Text(
-                      currentStep > 0
-                          ? 'Back (Esc) • ආපසු'
-                          : 'Cancel (Esc) • අවලංගු කරන්න',
-                    ),
-                  ),
-                  if (currentStep == 0)
-                    ElevatedButton.icon(
-                      onPressed: onMethodChosen,
-                      icon: const Icon(Icons.arrow_forward_rounded, size: 16),
-                      label: const Text('Next (Enter) • ඉදිරියට'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppTheme.brandIndigo,
-                        foregroundColor: Colors.white,
-                      ),
-                    )
-                  else if (currentStep == 1)
-                    ElevatedButton.icon(
-                      onPressed: () => onCustomerPromptAnswer(false),
-                      icon: const Icon(Icons.flash_on_rounded, size: 16),
-                      label: const Text('Skip (Enter) • නැත'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppTheme.brandIndigo,
-                        foregroundColor: Colors.white,
-                      ),
-                    )
-                  else if (currentStep == 2)
-                    ElevatedButton.icon(
-                      onPressed: onCustomerStepNext,
-                      icon: const Icon(Icons.arrow_forward_rounded, size: 16),
-                      label: const Text('Next: Tender (Enter) • ඉදිරියට'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppTheme.brandIndigo,
-                        foregroundColor: Colors.white,
-                      ),
-                    )
-                  else if (currentStep == 3)
-                    ElevatedButton.icon(
-                      onPressed: onTenderStepNext,
-                      icon: const Icon(Icons.arrow_forward_rounded, size: 16),
-                      label: const Text('Next: Confirm (Enter) • ඉදිරියට'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppTheme.brandIndigo,
-                        foregroundColor: Colors.white,
-                      ),
-                    )
-                  else
-                    ElevatedButton.icon(
-                      onPressed: completeFinal,
-                      icon: const Icon(Icons.check_circle_outline_rounded, size: 18),
-                      label: Text('Complete Sale (Enter) • ${_money(grandTotal)}'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF10B981),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                        textStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                      ),
-                    ),
-                ],
-              ),
-            );
-          },
-        );
-      },
-    );
+              );
+            },
+          );
+        },
+      );
+    } finally {
+      HardwareKeyboard.instance.removeHandler(handleHardwareKey);
+      modalPaidController.dispose();
+      modalCustomerSearchCtrl.dispose();
+      paidInputFocus.dispose();
+      stepFocusNode.dispose();
+      customerSearchFocus.dispose();
+    }
+    return dialogResult;
   }
 
   Widget _buildStepProgressChip(String label, bool isCompleted, bool isActive, bool isDark) {
@@ -6253,6 +6381,7 @@ extension _point_of_saleExt on _DashboardScreenState {
                 final m = methods[i];
                 final isSel = m == selected;
                 return InkWell(
+                  canRequestFocus: false,
                   onTap: () => onSelect(m),
                   borderRadius: BorderRadius.circular(10),
                   child: Container(
@@ -6430,10 +6559,13 @@ extension _point_of_saleExt on _DashboardScreenState {
     required bool isDark,
     required double grandTotal,
     required TextEditingController searchController,
+    required FocusNode searchFocusNode,
+    required int highlightedCustomerIndex,
     required StateSetter setDlgState,
     required ValueChanged<_CustomerItem> onCustomerPicked,
     required VoidCallback onAddNewCustomer,
     required VoidCallback onRemoveCustomer,
+    ValueChanged<String>? onSubmitted,
   }) {
     final bool hasCustomer = _selectedCustomerId != null;
     final double outstanding = hasCustomer ? _customerOutstandingBalance(selectedCustomer.id) : 0.0;
@@ -6460,15 +6592,27 @@ extension _point_of_saleExt on _DashboardScreenState {
               Expanded(
                 child: TextField(
                   controller: searchController,
+                  focusNode: searchFocusNode,
                   autofocus: true,
                   decoration: InputDecoration(
                     labelText: 'Search Customer (නම, දුරකථන, ID)',
-                    hintText: 'Customer සෙවීමට type කරන්න...',
+                    hintText: 'Customer සෙවීමට type කරන්න හෝ ↑ ↓ ඊතල ඔබන්න...',
                     prefixIcon: const Icon(Icons.search, size: 20),
                     isDense: true,
                     border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                    suffixIcon: searchController.text.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear, size: 16),
+                            onPressed: () {
+                              searchController.clear();
+                              setDlgState(() {});
+                            },
+                          )
+                        : null,
                   ),
+                  textInputAction: TextInputAction.search,
                   onChanged: (_) => setDlgState(() {}),
+                  onSubmitted: onSubmitted,
                 ),
               ),
               const SizedBox(width: 8),
@@ -6526,27 +6670,76 @@ extension _point_of_saleExt on _DashboardScreenState {
                     separatorBuilder: (_, __) => const Divider(height: 1),
                     itemBuilder: (context, index) {
                       final c = matchingCustomers[index];
-                      return ListTile(
-                        dense: true,
-                        leading: CircleAvatar(
-                          radius: 14,
-                          backgroundColor: AppTheme.brandIndigo.withValues(alpha: 0.15),
-                          child: Text(
-                            c.name.isNotEmpty ? c.name[0].toUpperCase() : '?',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                              color: AppTheme.brandIndigo,
+                      final isHighlighted = index == highlightedCustomerIndex;
+                      return InkWell(
+                        canRequestFocus: false,
+                        onTap: () => onCustomerPicked(c),
+                        child: Container(
+                          color: isHighlighted
+                              ? (isDark
+                                  ? AppTheme.brandIndigo.withValues(alpha: 0.25)
+                                  : AppTheme.brandIndigo.withValues(alpha: 0.12))
+                              : Colors.transparent,
+                          child: ListTile(
+                            dense: true,
+                            leading: CircleAvatar(
+                              radius: 14,
+                              backgroundColor: isHighlighted
+                                  ? AppTheme.brandIndigo
+                                  : AppTheme.brandIndigo.withValues(alpha: 0.15),
+                              child: Text(
+                                c.name.isNotEmpty ? c.name[0].toUpperCase() : '?',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: isHighlighted ? Colors.white : AppTheme.brandIndigo,
+                                ),
+                              ),
+                            ),
+                            title: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    c.name,
+                                    style: TextStyle(
+                                      fontWeight: isHighlighted ? FontWeight.bold : FontWeight.w600,
+                                      fontSize: 13,
+                                      color: isHighlighted
+                                          ? (isDark ? Colors.white : AppTheme.brandIndigo)
+                                          : null,
+                                    ),
+                                  ),
+                                ),
+                                if (isHighlighted)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: AppTheme.brandIndigo,
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: const Text(
+                                      'Enter තෝරන්න',
+                                      style: TextStyle(fontSize: 9.5, color: Colors.white, fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                            subtitle: Text(
+                              '${c.phone.isNotEmpty ? c.phone : 'No Phone'} • ${c.address.isNotEmpty ? c.address : 'No Address'}',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: isHighlighted
+                                    ? (isDark ? Colors.grey.shade300 : const Color(0xFF334155))
+                                    : Colors.grey,
+                              ),
+                            ),
+                            trailing: Icon(
+                              isHighlighted ? Icons.check_circle : Icons.check_circle_outline,
+                              size: 18,
+                              color: isHighlighted ? AppTheme.brandIndigo : Colors.grey,
                             ),
                           ),
                         ),
-                        title: Text(c.name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-                        subtitle: Text(
-                          '${c.phone.isNotEmpty ? c.phone : 'No Phone'} • ${c.address.isNotEmpty ? c.address : 'No Address'}',
-                          style: const TextStyle(fontSize: 11, color: Colors.grey),
-                        ),
-                        trailing: const Icon(Icons.check_circle_outline, size: 18, color: Colors.grey),
-                        onTap: () => onCustomerPicked(c),
                       );
                     },
                   ),
@@ -6582,23 +6775,19 @@ extension _point_of_saleExt on _DashboardScreenState {
                         children: [
                           Text(
                             selectedCustomer.name,
-                            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
                           ),
                           Text(
-                            'Phone: ${selectedCustomer.phone.isEmpty ? 'N/A' : selectedCustomer.phone} • ID: ${selectedCustomer.id}',
-                            style: const TextStyle(fontSize: 11.5, color: Colors.grey),
+                            'Phone: ${selectedCustomer.phone.isNotEmpty ? selectedCustomer.phone : 'N/A'} • ID: ${selectedCustomer.id}',
+                            style: const TextStyle(fontSize: 11, color: Colors.grey),
                           ),
                         ],
                       ),
                     ),
-                    OutlinedButton.icon(
+                    TextButton.icon(
+                      icon: const Icon(Icons.swap_horiz_rounded, size: 16),
+                      label: const Text('Change Customer', style: TextStyle(fontSize: 12)),
                       onPressed: onRemoveCustomer,
-                      icon: const Icon(Icons.swap_horiz_rounded, size: 14),
-                      label: const Text('Change', style: TextStyle(fontSize: 11)),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                        visualDensity: VisualDensity.compact,
-                      ),
                     ),
                   ],
                 ),
@@ -6606,123 +6795,145 @@ extension _point_of_saleExt on _DashboardScreenState {
                   const SizedBox(height: 6),
                   Text(
                     'Address: ${selectedCustomer.address}',
-                    style: TextStyle(
-                      fontSize: 11.5,
-                      color: isDark ? Colors.grey.shade400 : const Color(0xFF64748B),
-                    ),
+                    style: TextStyle(fontSize: 11.5, color: isDark ? Colors.grey.shade400 : const Color(0xFF475569)),
                   ),
                 ],
-                const SizedBox(height: 4),
+                const SizedBox(height: 6),
                 Row(
                   children: [
                     Text(
-                      'Outstanding Credit: ${_money(outstanding)}',
+                      'Outstanding: ${_money(outstanding)}',
                       style: TextStyle(
                         fontSize: 11.5,
                         fontWeight: FontWeight.w600,
-                        color: outstanding > 0 ? const Color(0xFFE11D48) : null,
+                        color: outstanding > 0 ? Colors.red : Colors.green,
                       ),
                     ),
+                    const SizedBox(width: 12),
                     Text(
-                      ' • Limit: ${selectedCustomer.creditLimit <= 0 ? 'No limit' : _money(selectedCustomer.creditLimit)}',
+                      'Credit Limit: ${_money(selectedCustomer.creditLimit)}',
                       style: const TextStyle(fontSize: 11.5, color: Colors.grey),
                     ),
                   ],
                 ),
-                if (hasOverdue) ...[
-                  const SizedBox(height: 6),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFFEFEF),
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(color: const Color(0xFFF2B6B6)),
-                    ),
-                    child: const Text(
-                      'Overdue credit detected. Clear overdue balance before creating new credit sale.',
-                      style: TextStyle(color: Color(0xFFB43E3E), fontWeight: FontWeight.bold, fontSize: 11),
-                    ),
-                  ),
-                ],
               ],
             ),
           ),
         ],
 
-        // Method-Specific controls inside Customer step
-        if (currentMethod == 'COD') ...[
+        // Payment Method-specific requirements & warnings
+        if (currentMethod == 'CREDIT') ...[
+          const SizedBox(height: 10),
+          if (hasOverdue)
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.red.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.red.withValues(alpha: 0.4)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.warning_amber_rounded, color: Colors.red, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Overdue Warning: මෙම පාරිභෝගිකයාට ගෙවීමට ප්‍රමාද වූ ණය පවතී (${_formatDate(oldestOverdue)} සිට).',
+                      style: const TextStyle(fontSize: 11.5, color: Colors.red, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          if (hasCustomer && selectedCustomer.creditLimit > 0 && (outstanding + grandTotal) > selectedCustomer.creditLimit) ...[
+            const SizedBox(height: 6),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.orange.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.orange.withValues(alpha: 0.4)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.info_outline_rounded, color: Colors.orange, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Credit Limit Warning: මෙම බිලත් සමඟ ණය සීමාව (${_money(selectedCustomer.creditLimit)}) ඉක්මවා යයි.',
+                      style: const TextStyle(fontSize: 11.5, color: Colors.orange, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ] else if (currentMethod == 'COD') ...[
           const SizedBox(height: 10),
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: const Color(0xFFFFF7ED),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: const Color(0xFFFDBA74)),
+              color: Colors.amber.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.amber.withValues(alpha: 0.3)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: const [
-                    Icon(Icons.local_shipping_outlined, color: Color(0xFFEA580C), size: 18),
+                const Row(
+                  children: [
+                    Icon(Icons.local_shipping_outlined, color: Colors.amber, size: 18),
                     SizedBox(width: 6),
                     Text(
                       'COD Delivery Rider Assignment',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5, color: Color(0xFF9A3412)),
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12.5),
                     ),
                   ],
                 ),
                 const SizedBox(height: 8),
-                () {
-                  final activeDrivers = _users
-                      .where((u) => u.active && u.role.toLowerCase() == 'driver')
-                      .toList();
-                  return DropdownButtonFormField<String>(
-                    value: _posSelectedDeliveryDriverId,
-                    isExpanded: true,
-                    decoration: InputDecoration(
-                      labelText: 'Assign Delivery Driver',
-                      isDense: true,
-                      fillColor: Colors.white,
-                      filled: true,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
+                DropdownButtonFormField<String?>(
+                  decoration: const InputDecoration(
+                    labelText: 'Assign Delivery Driver',
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    border: OutlineInputBorder(),
+                  ),
+                  value: _posSelectedDeliveryDriverId,
+                  items: [
+                    const DropdownMenuItem<String?>(
+                      value: null,
+                      child: Text('Unassigned (පසුව බාරදෙන්න)', style: TextStyle(fontSize: 12)),
                     ),
-                    items: [
-                      const DropdownMenuItem(
-                        value: null,
-                        child: Text('Unassigned (පසුව බාරදෙන්න)', style: TextStyle(fontSize: 12)),
-                      ),
-                      ...activeDrivers.map((driver) {
-                        return DropdownMenuItem(
-                          value: driver.id,
-                          child: Text(driver.name, style: const TextStyle(fontSize: 12)),
-                        );
-                      }),
-                    ],
-                    onChanged: (val) {
-                      setDlgState(() {
-                        _posSelectedDeliveryDriverId = val;
-                      });
-                    },
-                  );
-                }(),
+                    ..._scopedUsers
+                        .where((u) => u.active && (u.role.toLowerCase() == 'driver' || u.role.toLowerCase() == 'delivery'))
+                        .map((u) => DropdownMenuItem<String?>(
+                              value: u.id,
+                              child: Text(u.name, style: const TextStyle(fontSize: 12)),
+                            )),
+                  ],
+                  onChanged: (val) {
+                    setState(() {
+                      _posSelectedDeliveryDriverId = val;
+                    });
+                    setDlgState(() {});
+                  },
+                ),
                 const SizedBox(height: 6),
                 Row(
                   children: [
                     Checkbox(
                       value: _posCodPaymentCollectedUpfront,
-                      activeColor: const Color(0xFFEA580C),
                       onChanged: (val) {
-                        setDlgState(() {
+                        setState(() {
                           _posCodPaymentCollectedUpfront = val ?? false;
                         });
+                        setDlgState(() {});
                       },
                     ),
                     const Expanded(
                       child: Text(
                         'Payment collected upfront (දැනටමත් මුදල් ගෙවා ඇත)',
-                        style: TextStyle(fontSize: 11.5, color: Color(0xFF9A3412), fontWeight: FontWeight.w600),
+                        style: TextStyle(fontSize: 11.5),
                       ),
                     ),
                   ],
@@ -6730,23 +6941,23 @@ extension _point_of_saleExt on _DashboardScreenState {
               ],
             ),
           ),
-        ] else if (currentMethod == 'CREDIT') ...[
+        ] else if (currentMethod == 'INSTALLMENT') ...[
           const SizedBox(height: 10),
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: const Color(0xFFEFF6FF),
+              color: Colors.blue.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: const Color(0xFF93C5FD)),
+              border: Border.all(color: Colors.blue.withValues(alpha: 0.3)),
             ),
-            child: Row(
+            child: const Row(
               children: [
-                const Icon(Icons.account_balance_wallet_outlined, color: Color(0xFF2563EB), size: 18),
-                const SizedBox(width: 8),
+                Icon(Icons.calendar_month_outlined, color: Colors.blue, size: 18),
+                SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Bill amount ${_money(grandTotal)} will be debited to ${selectedCustomer.name}\'s credit ledger.',
-                    style: const TextStyle(fontSize: 11.5, color: Color(0xFF1E40AF), fontWeight: FontWeight.w600),
+                    'Installment Sale: Customer තොරතුරු සහ දුරකථන අංකය නිවැරදි බව තහවුරු කරගන්න.',
+                    style: TextStyle(fontSize: 11.5, color: Colors.blue),
                   ),
                 ),
               ],
@@ -6838,6 +7049,7 @@ extension _point_of_saleExt on _DashboardScreenState {
                   controller: paidController,
                   focusNode: paidInputFocus,
                   autofocus: true,
+                  textInputAction: TextInputAction.done,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
                   style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   decoration: InputDecoration(
@@ -6860,6 +7072,7 @@ extension _point_of_saleExt on _DashboardScreenState {
               ),
               const SizedBox(width: 8),
               ElevatedButton(
+                focusNode: FocusNode(canRequestFocus: false),
                 onPressed: onExact,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppTheme.brandIndigo,
@@ -6878,6 +7091,7 @@ extension _point_of_saleExt on _DashboardScreenState {
             children: [
               for (final chipAmount in [100.0, 500.0, 1000.0, 5000.0, 10000.0])
                 ActionChip(
+                  focusNode: FocusNode(canRequestFocus: false),
                   label: Text('Rs. ${chipAmount.toInt()}'),
                   labelStyle: const TextStyle(fontSize: 11.5),
                   padding: EdgeInsets.zero,
@@ -6908,35 +7122,31 @@ extension _point_of_saleExt on _DashboardScreenState {
                     Icon(
                       rawPaid >= grandTotal
                           ? Icons.change_circle_rounded
-                          : Icons.pending_actions_rounded,
-                      color: rawPaid >= grandTotal
-                          ? const Color(0xFF10B981)
-                          : const Color(0xFFF59E0B),
+                          : Icons.account_balance_wallet_outlined,
+                      color: rawPaid >= grandTotal ? const Color(0xFF10B981) : const Color(0xFFF59E0B),
                       size: 20,
                     ),
                     const SizedBox(width: 8),
                     Text(
                       rawPaid >= grandTotal
                           ? 'Change to Return (ඉතිරි මුදල):'
-                          : 'Due / Balance (හිඟ මුදල):',
+                          : 'Due Balance (ඉතිරි ණය):',
                       style: TextStyle(
-                        fontSize: 12.5,
                         fontWeight: FontWeight.w600,
+                        fontSize: 12.5,
                         color: rawPaid >= grandTotal
-                            ? const Color(0xFF10B981)
-                            : const Color(0xFFF59E0B),
+                            ? (isDark ? Colors.green.shade200 : const Color(0xFF065F46))
+                            : (isDark ? Colors.orange.shade200 : const Color(0xFF92400E)),
                       ),
                     ),
                   ],
                 ),
                 Text(
-                  rawPaid >= grandTotal ? _money(changeAmount) : _money(dueAmount),
+                  _money(rawPaid >= grandTotal ? changeAmount : dueAmount),
                   style: TextStyle(
-                    fontSize: 15,
                     fontWeight: FontWeight.bold,
-                    color: rawPaid >= grandTotal
-                        ? const Color(0xFF10B981)
-                        : const Color(0xFFF59E0B),
+                    fontSize: 15,
+                    color: rawPaid >= grandTotal ? const Color(0xFF10B981) : const Color(0xFFF59E0B),
                   ),
                 ),
               ],
@@ -6944,63 +7154,43 @@ extension _point_of_saleExt on _DashboardScreenState {
           ),
         ] else ...[
           Container(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
               color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
               borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
-              ),
+              border: Border.all(color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0)),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                if (method == 'CHEQUE') ...[
-                  TextField(
-                    controller: _chequeNumberController,
-                    autofocus: true,
-                    decoration: InputDecoration(
-                      labelText: 'Cheque Number (චෙක්පත් අංකය)',
-                      isDense: true,
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                    ),
-                    onSubmitted: onSubmitted,
+                Text(
+                  method == 'CREDIT'
+                      ? 'Credit Sale (ණය මුදල)'
+                      : '$method Payment',
+                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                ),
+                Text(
+                  _money(grandTotal),
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    color: AppTheme.brandIndigo,
                   ),
-                ] else if (method == 'CREDIT') ...[
-                  Row(
-                    children: [
-                      const Icon(Icons.badge_outlined, size: 16, color: Color(0xFF2563EB)),
-                      const SizedBox(width: 6),
-                      Text(
-                        'Customer: ${selectedCustomer.name}',
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Full amount ${_money(grandTotal)} will be added to credit balance.',
-                    style: const TextStyle(fontSize: 12, color: Colors.grey),
-                  ),
-                ] else if (method == 'COD') ...[
-                  Text(
-                    'COD Order for ${selectedCustomer.name}. Total: ${_money(grandTotal)}',
-                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    _posCodPaymentCollectedUpfront
-                        ? 'Payment collected upfront (${_money(grandTotal)} paid)'
-                        : 'Cash to be collected upon delivery by rider.',
-                    style: const TextStyle(fontSize: 12, color: Colors.grey),
-                  ),
-                ] else ...[
-                  Text(
-                    'Direct payment of ${_money(grandTotal)} via $method.',
-                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-                  ),
-                ],
+                ),
               ],
+            ),
+          ),
+        ],
+
+        if (method == 'CHEQUE') ...[
+          const SizedBox(height: 10),
+          TextField(
+            controller: _chequeNumberController,
+            decoration: const InputDecoration(
+              labelText: 'Cheque Number (චෙක්පත් අංකය)',
+              prefixIcon: Icon(Icons.sticky_note_2_outlined, size: 20),
+              border: OutlineInputBorder(),
+              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             ),
           ),
         ],
@@ -7028,25 +7218,23 @@ extension _point_of_saleExt on _DashboardScreenState {
           decoration: BoxDecoration(
             color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF8FAFC),
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
-            ),
+            border: Border.all(color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0)),
           ),
           child: Column(
             children: [
-              _buildSummaryRow('Customer', selectedCustomer.name, isDark),
-              if (selectedCustomer.phone.isNotEmpty && selectedCustomer.phone != 'N/A')
-                _buildSummaryRow('Phone', selectedCustomer.phone, isDark),
-              const Divider(height: 12),
-              _buildSummaryRow('Items in Cart', '$cartItemCount items', isDark),
+              _buildSummaryRow('Invoice Items', '$cartItemCount items in cart', isDark),
               const Divider(height: 12),
               _buildSummaryRow('Payment Method', method, isDark, boldValue: true),
               const Divider(height: 12),
-              _buildSummaryRow('Grand Total', _money(grandTotal), isDark,
-                  boldValue: true, valueColor: const Color(0xFF6366F1), valueSize: 15),
+              _buildSummaryRow('Customer', selectedCustomer.name, isDark),
+              if (selectedCustomer.phone.isNotEmpty && selectedCustomer.phone != 'N/A')
+                _buildSummaryRow('Customer Phone', selectedCustomer.phone, isDark),
               const Divider(height: 12),
-              _buildSummaryRow('Amount Paid', _money(rawPaid > 0 ? rawPaid : grandTotal), isDark),
-              if (method == 'CASH' && changeAmount > 0) ...[
+              _buildSummaryRow('Grand Total (මුළු එකතුව)', _money(grandTotal), isDark,
+                  boldValue: true, valueColor: AppTheme.brandIndigo, valueSize: 16),
+              if (_allowsManualPaidAmount(method)) ...[
+                const Divider(height: 12),
+                _buildSummaryRow('Amount Paid (ගෙවූ මුදල)', _money(rawPaid), isDark),
                 const Divider(height: 12),
                 _buildSummaryRow('Change to Return (ඉතිරි)', _money(changeAmount), isDark,
                     boldValue: true, valueColor: const Color(0xFF10B981), valueSize: 15),
@@ -7112,6 +7300,7 @@ extension _point_of_saleExt on _DashboardScreenState {
       ],
     );
   }
+
 
   static bool _isPosCheckoutProcessing = false;
 
