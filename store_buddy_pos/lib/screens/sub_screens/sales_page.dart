@@ -2778,6 +2778,7 @@ extension _sales_pageExt on _DashboardScreenState {
         await _handleReturnCashAndBanking(item);
       }
     }
+    setState(() {});
 
     await _persistWorkspaceData();
     for (final item in created) {

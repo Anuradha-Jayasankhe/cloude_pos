@@ -472,9 +472,9 @@ class PrintService {
           pw.Divider(),
           pw.Text(_pdfSafe(storeName), style: valueStyle),
           if (storeAddress.trim().isNotEmpty)
-            pw.Text(_pdfSafe(storeAddress), style: labelStyle),
+            pw.Text(_pdfSafe(storeAddress), style: valueStyle),
           if (storePhone.trim().isNotEmpty)
-            pw.Text(_pdfSafe(storePhone), style: labelStyle),
+            pw.Text(_pdfSafe(storePhone), style: valueStyle),
           pw.SizedBox(height: 8),
           pw.Text('Customer: ${_pdfSafe(customerName)}', style: labelStyle),
           if (customerPhone.trim().isNotEmpty)
@@ -777,9 +777,9 @@ class PrintService {
           pw.SizedBox(height: 4),
           pw.Text(_pdfSafe(storeName), style: valueStyle),
           if (storeAddress.trim().isNotEmpty)
-            pw.Text(_pdfSafe(storeAddress), style: labelStyle),
+            pw.Text(_pdfSafe(storeAddress), style: valueStyle),
           if (storePhone.trim().isNotEmpty)
-            pw.Text(_pdfSafe(storePhone), style: labelStyle),
+            pw.Text(_pdfSafe(storePhone), style: valueStyle),
           pw.SizedBox(height: 8),
           pw.Row(
             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
@@ -1354,8 +1354,9 @@ class PrintService {
             child: pw.Text(
               _pdfSafe(storeName),
               style: pw.TextStyle(
-                fontSize: fontSize + 3.5,
+                fontSize: fontSize + 4.0,
                 fontWeight: pw.FontWeight.bold,
+                letterSpacing: 0.5,
               ),
               textAlign: pw.TextAlign.center,
             ),
@@ -1366,8 +1367,8 @@ class PrintService {
               child: pw.Text(
                 _pdfSafe(settings.invoiceSlogan?.trim() ?? ''),
                 style: pw.TextStyle(
-                  fontSize: fontSize - 1,
-                  fontStyle: pw.FontStyle.italic,
+                  fontSize: (fontSize - 0.5).clamp(7.5, 9.5),
+                  fontWeight: pw.FontWeight.bold,
                 ),
                 textAlign: pw.TextAlign.center,
               ),
@@ -1378,7 +1379,11 @@ class PrintService {
             pw.Center(
               child: pw.Text(
                 _pdfSafe(storeAddress),
-                style: smallStyle,
+                style: pw.TextStyle(
+                  fontSize: (fontSize - 0.5).clamp(7.5, 9.5),
+                  fontWeight: pw.FontWeight.bold,
+                  lineSpacing: rawSpacing,
+                ),
                 textAlign: pw.TextAlign.center,
               ),
             ),
@@ -1388,7 +1393,11 @@ class PrintService {
             pw.Center(
               child: pw.Text(
                 _pdfSafe(storePhone),
-                style: smallStyle,
+                style: pw.TextStyle(
+                  fontSize: (fontSize - 0.5).clamp(7.5, 9.5),
+                  fontWeight: pw.FontWeight.bold,
+                  lineSpacing: rawSpacing,
+                ),
                 textAlign: pw.TextAlign.center,
               ),
             ),
@@ -2087,16 +2096,18 @@ class PrintService {
                     pw.SizedBox(height: 4),
                     pw.Text(
                       _pdfSafe(storeAddress),
-                      style: const pw.TextStyle(
+                      style: pw.TextStyle(
                         color: PdfColors.white,
-                        fontSize: 10,
+                        fontSize: 10.5,
+                        fontWeight: pw.FontWeight.bold,
                       ),
                     ),
                     pw.Text(
                       _pdfSafe(storePhone),
-                      style: const pw.TextStyle(
+                      style: pw.TextStyle(
                         color: PdfColors.white,
-                        fontSize: 10,
+                        fontSize: 10.5,
+                        fontWeight: pw.FontWeight.bold,
                       ),
                     ),
                   ],
@@ -2843,13 +2854,13 @@ class PrintService {
       if (storeAddress.trim().isNotEmpty) ...[
         pw.SizedBox(height: 1),
         pw.Center(
-          child: pw.Text(_pdfSafe(storeAddress), style: smallStyle, textAlign: pw.TextAlign.center),
+          child: pw.Text(_pdfSafe(storeAddress), style: boldStyle, textAlign: pw.TextAlign.center),
         ),
       ],
       if (storePhone.trim().isNotEmpty) ...[
         pw.SizedBox(height: 1),
         pw.Center(
-          child: pw.Text('Tel: ${_pdfSafe(storePhone)}', style: smallStyle, textAlign: pw.TextAlign.center),
+          child: pw.Text('Tel: ${_pdfSafe(storePhone)}', style: boldStyle, textAlign: pw.TextAlign.center),
         ),
       ],
       pw.Divider(height: 4, thickness: 0.8, borderStyle: pw.BorderStyle.dashed),
@@ -3164,11 +3175,17 @@ class PrintService {
                         ),
                         pw.Text(
                           _pdfSafe(storeAddress),
-                          style: pw.TextStyle(fontSize: bodyTextSize),
+                          style: pw.TextStyle(
+                            fontSize: bodyTextSize,
+                            fontWeight: pw.FontWeight.bold,
+                          ),
                         ),
                         pw.Text(
                           'Phone: $storePhone',
-                          style: pw.TextStyle(fontSize: bodyTextSize),
+                          style: pw.TextStyle(
+                            fontSize: bodyTextSize,
+                            fontWeight: pw.FontWeight.bold,
+                          ),
                         ),
                       ],
                     ),

@@ -3640,31 +3640,14 @@ extension _point_of_saleExt on _DashboardScreenState {
                               vertical: 14,
                             ),
                             decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                colors: isDark
-                                    ? [
-                                        const Color(0xFF1E1B4B),
-                                        const Color(0xFF2E2466),
-                                      ]
-                                    : [
-                                        const Color(0xFFEEF2FF),
-                                        const Color(0xFFE0E7FF),
-                                      ],
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                              ),
+                              color: isDark
+                                  ? const Color(0xFF1E1B4B)
+                                  : const Color(0xFFEEF2FF),
                               borderRadius: BorderRadius.circular(UiRadius.md),
                               border: Border.all(
                                 color: AppTheme.brandIndigo.withValues(alpha: 0.4),
                                 width: 1.5,
                               ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: AppTheme.brandIndigo.withValues(alpha: 0.12),
-                                  blurRadius: 10,
-                                  offset: const Offset(0, 3),
-                                ),
-                              ],
                             ),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
@@ -4421,26 +4404,12 @@ extension _point_of_saleExt on _DashboardScreenState {
                       height: 52,
                       width: double.infinity,
                       decoration: BoxDecoration(
-                        gradient: (cartItems.isEmpty || isAllLocations)
-                            ? null
-                            : UiGradients.brand,
                         color: (cartItems.isEmpty || isAllLocations)
                             ? (Theme.of(context).brightness == Brightness.dark
-                                  ? Colors.white10
-                                  : Colors.black.withValues(alpha: 0.05))
-                            : null,
+                                  ? const Color(0xFF1E293B)
+                                  : const Color(0xFFCBD5E1))
+                            : const Color(0xFF4F46E5),
                         borderRadius: BorderRadius.circular(UiRadius.md),
-                        boxShadow: (cartItems.isEmpty || isAllLocations)
-                            ? null
-                            : [
-                                BoxShadow(
-                                  color: const Color(
-                                    0xFF6366F1,
-                                  ).withValues(alpha: 0.3),
-                                  blurRadius: 10,
-                                  offset: const Offset(0, 3),
-                                ),
-                              ],
                       ),
                       child: ElevatedButton(
                         onPressed: (cartItems.isEmpty || isAllLocations)
@@ -4448,7 +4417,9 @@ extension _point_of_saleExt on _DashboardScreenState {
                             : () => _startPosCheckoutFlow(),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.transparent,
+                          disabledBackgroundColor: Colors.transparent,
                           foregroundColor: Colors.white,
+                          disabledForegroundColor: Colors.white38,
                           shadowColor: Colors.transparent,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(UiRadius.md),

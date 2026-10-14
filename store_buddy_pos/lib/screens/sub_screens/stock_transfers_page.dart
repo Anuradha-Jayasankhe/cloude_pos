@@ -162,40 +162,39 @@ extension _stock_transfers_pageExt on _DashboardScreenState {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Page Header
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        ShaderMask(
-                          blendMode: BlendMode.srcIn,
-                          shaderCallback: (bounds) =>
-                              UiGradients.brand.createShader(
-                            Rect.fromLTWH(0, 0, bounds.width, bounds.height),
-                          ),
-                          child: const Text(
-                            'Stock Transfers & Requests',
-                            style: TextStyle(
-                              fontSize: 32,
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: -0.5,
-                            ),
-                          ),
+              LayoutBuilder(
+                builder: (context, headerConstraints) {
+                  final isCompact = headerConstraints.maxWidth < 650;
+                  final titleWidget = Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      ShaderMask(
+                        blendMode: BlendMode.srcIn,
+                        shaderCallback: (bounds) =>
+                            UiGradients.brand.createShader(
+                          Rect.fromLTWH(0, 0, bounds.width, bounds.height),
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Transfer stock across locations and manage branch restock requests.',
+                        child: Text(
+                          'Stock Transfers & Requests',
                           style: TextStyle(
-                            fontSize: 13,
-                            color: colorScheme.onSurface.withValues(alpha: 0.55),
+                            fontSize: isCompact ? 22 : 32,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.5,
                           ),
                         ),
-                      ],
-                    ),
-                  ),
-                  Wrap(
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Transfer stock across locations and manage branch restock requests.',
+                        style: TextStyle(
+                          fontSize: isCompact ? 12 : 13,
+                          color: colorScheme.onSurface.withValues(alpha: 0.55),
+                        ),
+                      ),
+                    ],
+                  );
+
+                  final actionButtons = Wrap(
                     spacing: 8,
                     runSpacing: 8,
                     children: [
@@ -275,41 +274,63 @@ extension _stock_transfers_pageExt on _DashboardScreenState {
                         ),
                       ),
                     ],
-                  ),
-                ],
+                  );
+
+                  if (isCompact) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        titleWidget,
+                        const SizedBox(height: 12),
+                        actionButtons,
+                      ],
+                    );
+                  }
+
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Expanded(child: titleWidget),
+                      actionButtons,
+                    ],
+                  );
+                },
               ),
               const SizedBox(height: UiSpacing.md),
 
               // Tab Bar Pills
-              Container(
-                decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
-                  borderRadius: BorderRadius.circular(UiRadius.md),
-                  border: Border.all(
-                    color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+                    borderRadius: BorderRadius.circular(UiRadius.md),
+                    border: Border.all(
+                      color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+                    ),
                   ),
-                ),
-                padding: const EdgeInsets.all(4),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _buildTransferTabPill(
-                      index: 0,
-                      label: 'Stock Transfers (${transfers.length})',
-                      icon: Icons.local_shipping_outlined,
-                      isSelected: _stockTransfersTabIndex == 0,
-                      isDark: isDark,
-                    ),
-                    const SizedBox(width: 4),
-                    _buildTransferTabPill(
-                      index: 1,
-                      label: 'Stock Requests (${requests.length})',
-                      icon: Icons.pending_actions_rounded,
-                      isSelected: _stockTransfersTabIndex == 1,
-                      isDark: isDark,
-                      badgeCount: pendingCount,
-                    ),
-                  ],
+                  padding: const EdgeInsets.all(4),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _buildTransferTabPill(
+                        index: 0,
+                        label: 'Stock Transfers (${transfers.length})',
+                        icon: Icons.local_shipping_outlined,
+                        isSelected: _stockTransfersTabIndex == 0,
+                        isDark: isDark,
+                      ),
+                      const SizedBox(width: 4),
+                      _buildTransferTabPill(
+                        index: 1,
+                        label: 'Stock Requests (${requests.length})',
+                        icon: Icons.pending_actions_rounded,
+                        isSelected: _stockTransfersTabIndex == 1,
+                        isDark: isDark,
+                        badgeCount: pendingCount,
+                      ),
+                    ],
+                  ),
                 ),
               ),
               const SizedBox(height: UiSpacing.md),

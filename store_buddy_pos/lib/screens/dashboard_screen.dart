@@ -568,7 +568,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   bool _invoiceIncludeUser = true;
   String _invoiceUserLength = '2';
   bool _invoiceIncludeDate = true;
-  String _uiTheme = 'Light';
+  String _uiTheme = 'Dark';
   String _uiLanguage = 'English';
   bool _prefSound = true;
   bool _prefAutoPrint = false;
@@ -3389,6 +3389,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (_selectedLocationScope == _allLocationsLabel) {
       return true;
     }
+    if (tx.locationId.isNotEmpty) {
+      return _passesLocationScope(tx.locationId);
+    }
     String? locationId;
     final refType = tx.referenceType.toUpperCase();
     if (refType == 'SALE') {
@@ -3426,7 +3429,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         }
       }
     }
-    return _passesLocationScope(locationId);
+    return _passesLocationScope(locationId ?? _activeLocationForWrites);
   }
 
   List<_CashTransactionItem> get _scopedCashTransactions => _cashTransactions
@@ -3948,10 +3951,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
         balanceAfter: after,
         note: 'Cash refund for ${item.rmaNumber}',
         createdAt: DateTime.now().toIso8601String(),
+        locationId: _activeLocationForWrites,
       );
-      _cashTransactions.add(tx);
-      item.cashImpact = true;
-      item.cashAdjustmentId = tx.id;
+      setState(() {
+        _cashTransactions.add(tx);
+        item.cashImpact = true;
+        item.cashAdjustmentId = tx.id;
+      });
       await _enqueueSync('INSERT', 'cash_transactions', tx.id);
     } else if (item.refundMethod == 'BANK' || item.refundMethod == 'CARD') {
       final tx = _BankTransaction(
@@ -3962,10 +3968,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
         notes: '${item.refundMethod} refund for ${item.rmaNumber}',
         createdAt: DateTime.now(),
       );
-      _bankTransactions.add(tx);
-      _bankAccountBalance -= item.amount;
-      item.cashImpact = true;
-      item.cashAdjustmentId = tx.id;
+      setState(() {
+        _bankTransactions.add(tx);
+        _bankAccountBalance -= item.amount;
+        item.cashImpact = true;
+        item.cashAdjustmentId = tx.id;
+      });
       await _enqueueSync('INSERT', 'bank_transactions', tx.id);
     }
   }
@@ -4553,7 +4561,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
               sale.employeeId.trim().toLowerCase() ==
                   session.userName.trim().toLowerCase()) ||
           session.userId.isEmpty;
-      if (sale.status == 'COMPLETED' && matchesUser) {
+      final st = sale.status.toUpperCase();
+      if ((st == 'COMPLETED' || st == 'RETURNED' || st == 'PARTIALLY_RETURNED') && matchesUser) {
         if (sale.createdAt.isAfter(session.openingTime) &&
             (session.closingTime == null ||
                 sale.createdAt.isBefore(session.closingTime!))) {
@@ -15213,7 +15222,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       color: const Color(0xFF0D1525),
       child: DecoratedBox(
         decoration: BoxDecoration(
-          gradient: UiGradients.sidebar,
+          color: const Color(0xFF0D1525),
           border: Border(
             right: BorderSide(color: Colors.white.withValues(alpha: 0.06)),
           ),
@@ -15225,14 +15234,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               width: double.infinity,
               padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
               decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    const Color(0xFF070B14),
-                    AppTheme.brandIndigo.withValues(alpha: 0.18),
-                  ],
-                ),
+                color: const Color(0xFF070B14),
                 border: Border(
                   bottom: BorderSide(color: Colors.white.withValues(alpha: 0.07)),
                 ),
@@ -15248,9 +15250,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       fit: BoxFit.contain,
                       errorBuilder: (_, __, ___) => Container(
                         decoration: BoxDecoration(
-                          gradient: UiGradients.brand,
+                          color: const Color(0xFF4F46E5),
                           borderRadius: BorderRadius.circular(12),
-                          boxShadow: UiShadows.glow,
                         ),
                         child: const Icon(
                           Icons.storefront_rounded,
@@ -15264,19 +15265,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        ShaderMask(
-                          blendMode: BlendMode.srcIn,
-                          shaderCallback: (bounds) =>
-                              UiGradients.brand.createShader(
-                                Rect.fromLTWH(0, 0, bounds.width, bounds.height),
-                              ),
-                          child: const Text(
-                            'Store Buddy',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w800,
-                              fontSize: 15,
-                            ),
+                      children: const [
+                        Text(
+                          'Store Buddy',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: 15,
+                            color: Color(0xFF818CF8),
                           ),
                         ),
                         const SizedBox(height: 1),
@@ -16239,7 +16234,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           // Gradient accent line at top
           Container(
             height: 2,
-            decoration: const BoxDecoration(gradient: UiGradients.brand),
+            decoration: const BoxDecoration(color: Color(0xFF4F46E5)),
           ),
           Expanded(
             child: Padding(
@@ -16251,25 +16246,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        ShaderMask(
-                          blendMode: BlendMode.srcIn,
-                          shaderCallback: (bounds) =>
-                              UiGradients.brand.createShader(
-                                Rect.fromLTWH(
-                                  0,
-                                  0,
-                                  bounds.width,
-                                  bounds.height,
-                                ),
-                              ),
-                          child: Text(
-                            'Welcome back, ${state.user.name.isEmpty ? 'User' : state.user.name.split(' ').first}',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: compact ? 14 : 15,
-                              fontWeight: FontWeight.w700,
-                            ),
+                        Text(
+                          'Welcome back, ${state.user.name.isEmpty ? 'User' : state.user.name.split(' ').first}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: compact ? 14 : 15,
+                            fontWeight: FontWeight.w700,
+                            color: const Color(0xFF818CF8),
                           ),
                         ),
                       ],
@@ -16337,9 +16321,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       width: 36,
                       height: 36,
                       decoration: BoxDecoration(
-                        gradient: UiGradients.brand,
+                        color: const Color(0xFF4F46E5),
                         borderRadius: BorderRadius.circular(10),
-                        boxShadow: UiShadows.glow,
                       ),
                       alignment: Alignment.center,
                       child: Text(
@@ -17547,6 +17530,7 @@ class _CashTransactionItem {
   final double balanceAfter;
   final String note;
   final String createdAt;
+  final String locationId;
 
   _CashTransactionItem({
     required this.id,
@@ -17558,6 +17542,7 @@ class _CashTransactionItem {
     required this.balanceAfter,
     required this.note,
     required this.createdAt,
+    this.locationId = '',
   });
 
   Map<String, dynamic> toJson() => {
@@ -17570,6 +17555,7 @@ class _CashTransactionItem {
     'balanceAfter': balanceAfter,
     'note': note,
     'createdAt': createdAt,
+    'locationId': locationId,
   };
 
   factory _CashTransactionItem.fromJson(Map<String, dynamic> json) =>
@@ -17584,6 +17570,7 @@ class _CashTransactionItem {
         note: (json['note'] ?? '').toString(),
         createdAt: (json['createdAt'] ?? DateTime.now().toIso8601String())
             .toString(),
+        locationId: (json['locationId'] ?? '').toString(),
       );
 }
 

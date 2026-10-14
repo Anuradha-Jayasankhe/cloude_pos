@@ -158,168 +158,197 @@ extension _barcode_printing_pageExt on _DashboardScreenState {
                                       : Colors.blue.withValues(alpha: 0.25),
                                 ),
                               ),
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    _localLabelPrinterName != null &&
-                                            _localLabelPrinterName!.isNotEmpty
-                                        ? Icons.print_rounded
-                                        : Icons.info_outline_rounded,
-                                    size: 18,
-                                    color: _localLabelPrinterName != null &&
-                                            _localLabelPrinterName!.isNotEmpty
-                                        ? const Color(0xFF10B981)
-                                        : Colors.blue.shade700,
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Text(
-                                          _localLabelPrinterName != null &&
-                                                  _localLabelPrinterName!.isNotEmpty
-                                              ? 'Active Label Printer: "$_localLabelPrinterName"'
-                                              : 'Printer: System Print Dialog (No Direct Binding)',
-                                          style: TextStyle(
-                                            fontSize: 13,
-                                            fontWeight: FontWeight.bold,
-                                            color: _localLabelPrinterName != null &&
-                                                    _localLabelPrinterName!.isNotEmpty
-                                                ? const Color(0xFF10B981)
-                                                : (isDark
-                                                    ? Colors.blue.shade300
-                                                    : Colors.blue.shade800),
-                                          ),
-                                        ),
-                                        Text(
-                                          _localLabelPrinterName != null &&
-                                                  _localLabelPrinterName!.isNotEmpty
-                                              ? 'Labels will send directly to this device without dialog prompts.'
-                                              : 'Click "Connect Printer" to bind directly to Zebra, Xprinter, Dymo, or Brother.',
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  const SizedBox(width: 10),
-                                  OutlinedButton.icon(
-                                    onPressed: _showChangeLabelPrinterDialog,
-                                    icon: const Icon(Icons.settings_suggest_rounded, size: 16),
-                                    label: Text(
-                                      _localLabelPrinterName != null &&
-                                              _localLabelPrinterName!.isNotEmpty
-                                          ? 'Change'
-                                          : 'Connect Printer',
-                                      style: const TextStyle(fontSize: 12),
-                                    ),
-                                    style: OutlinedButton.styleFrom(
-                                      visualDensity: VisualDensity.compact,
-                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                    ),
-                                  ),
-                                  if (Platform.isWindows &&
-                                      _localLabelPrinterName != null &&
-                                      _localLabelPrinterName!.isNotEmpty) ...[
-                                    const SizedBox(width: 8),
-                                    OutlinedButton.icon(
-                                      onPressed: () {
-                                        try {
-                                          Process.run('rundll32.exe', [
-                                            'printui.dll,PrintUIEntry',
-                                            '/e',
-                                            '/n',
-                                            _localLabelPrinterName!,
-                                          ]);
-                                        } catch (e) {
-                                          debugPrint('Failed to open printer preferences: $e');
-                                        }
-                                      },
-                                      icon: const Icon(Icons.settings_outlined, size: 16),
-                                      label: const Text('Zebra Preferences', style: TextStyle(fontSize: 12)),
-                                      style: OutlinedButton.styleFrom(
-                                        foregroundColor: const Color(0xFF4F46E5),
-                                        visualDensity: VisualDensity.compact,
-                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                              child: LayoutBuilder(
+                                builder: (context, bannerConstraints) {
+                                  final isBannerCompact = bannerConstraints.maxWidth < 800;
+
+                                  final statusContent = Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Icon(
+                                        _localLabelPrinterName != null &&
+                                                _localLabelPrinterName!.isNotEmpty
+                                            ? Icons.print_rounded
+                                            : Icons.info_outline_rounded,
+                                        size: 18,
+                                        color: _localLabelPrinterName != null &&
+                                                _localLabelPrinterName!.isNotEmpty
+                                            ? const Color(0xFF10B981)
+                                            : Colors.blue.shade700,
                                       ),
-                                    ),
-                                  ],
-                                  const SizedBox(width: 8),
-                                  FilledButton.tonalIcon(
-                                    onPressed: () async {
-                                      _applyBarcodePreset('zebra_zd230_3col_22mm');
-                                      _saveBarcodeSettings();
-                                      final printer = _localLabelPrinterName;
-                                      if (printer != null && printer.trim().isNotEmpty) {
-                                        const calCmd = '! U1 setvar "media.sense_mode" "gap"\r\n'
-                                            '! U1 setvar "zpl.label_length_always" "yes"\r\n'
-                                            '! U1 setvar "zpl.label_length" "192"\r\n'
-                                            '^XA\r\n'
-                                            '^PW813\r\n'
-                                            '^LL192,Y\r\n'
-                                            '^MNY\r\n'
-                                            '^JUS\r\n'
-                                            '^XZ\r\n'
-                                            '~JC\r\n';
-                                        await _printBarcodeEntriesViaZpl(printer, calCmd);
-                                      }
-                                      if (mounted) {
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          const SnackBar(
-                                            content: Text('Auto-Calibrated for Zebra ZD230 3-Col (31.8x22mm)! Hardware sensor calibrated to 22mm gaps.'),
-                                            backgroundColor: Color(0xFF10B981),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Text(
+                                              _localLabelPrinterName != null &&
+                                                      _localLabelPrinterName!.isNotEmpty
+                                                  ? 'Active Label Printer: "$_localLabelPrinterName"'
+                                                  : 'Printer: System Print Dialog (No Direct Binding)',
+                                              style: TextStyle(
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.bold,
+                                                color: _localLabelPrinterName != null &&
+                                                        _localLabelPrinterName!.isNotEmpty
+                                                    ? const Color(0xFF10B981)
+                                                    : (isDark
+                                                        ? Colors.blue.shade300
+                                                        : Colors.blue.shade800),
+                                              ),
+                                            ),
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              _localLabelPrinterName != null &&
+                                                      _localLabelPrinterName!.isNotEmpty
+                                                  ? 'Labels will send directly to this device without dialog prompts.'
+                                                  : 'Click "Connect Printer" to bind directly to Zebra, Xprinter, Dymo, or Brother.',
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  );
+
+                                  final actionButtons = Wrap(
+                                    spacing: 8,
+                                    runSpacing: 8,
+                                    crossAxisAlignment: WrapCrossAlignment.center,
+                                    children: [
+                                      OutlinedButton.icon(
+                                        onPressed: _showChangeLabelPrinterDialog,
+                                        icon: const Icon(Icons.settings_suggest_rounded, size: 16),
+                                        label: Text(
+                                          _localLabelPrinterName != null &&
+                                                  _localLabelPrinterName!.isNotEmpty
+                                              ? 'Change'
+                                              : 'Connect Printer',
+                                          style: const TextStyle(fontSize: 12),
+                                        ),
+                                        style: OutlinedButton.styleFrom(
+                                          visualDensity: VisualDensity.compact,
+                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                        ),
+                                      ),
+                                      if (Platform.isWindows &&
+                                          _localLabelPrinterName != null &&
+                                          _localLabelPrinterName!.isNotEmpty)
+                                        OutlinedButton.icon(
+                                          onPressed: () {
+                                            try {
+                                              Process.run('rundll32.exe', [
+                                                'printui.dll,PrintUIEntry',
+                                                '/e',
+                                                '/n',
+                                                _localLabelPrinterName!,
+                                              ]);
+                                            } catch (e) {
+                                              debugPrint('Failed to open printer preferences: $e');
+                                            }
+                                          },
+                                          icon: const Icon(Icons.settings_outlined, size: 16),
+                                          label: const Text('Zebra Preferences', style: TextStyle(fontSize: 12)),
+                                          style: OutlinedButton.styleFrom(
+                                            foregroundColor: const Color(0xFF4F46E5),
+                                            visualDensity: VisualDensity.compact,
+                                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                                           ),
-                                        );
-                                      }
-                                    },
-                                    icon: const Icon(Icons.tune_rounded, size: 16),
-                                    label: const Text('Auto-Calibrate 3-Col (31.8x22mm)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                                    style: FilledButton.styleFrom(
-                                      backgroundColor: const Color(0xFFF59E0B).withValues(alpha: 0.15),
-                                      foregroundColor: const Color(0xFFD97706),
-                                      visualDensity: VisualDensity.compact,
-                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  FilledButton.icon(
-                                    onPressed: _testPrintSampleBarcodeLabel,
-                                    icon: const Icon(Icons.bolt_rounded, size: 16),
-                                    label: const Text('Test 1 Label', style: TextStyle(fontSize: 12)),
-                                    style: FilledButton.styleFrom(
-                                      backgroundColor: const Color(0xFF6366F1),
-                                      foregroundColor: Colors.white,
-                                      visualDensity: VisualDensity.compact,
-                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  FilledButton.icon(
-                                    onPressed: () async {
-                                      await _saveBarcodeSettings();
-                                      if (mounted) {
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          const SnackBar(
-                                            content: Text('Label printer & layout settings saved successfully!'),
-                                            backgroundColor: Color(0xFF10B981),
-                                          ),
-                                        );
-                                      }
-                                    },
-                                    icon: const Icon(Icons.check_circle_outline_rounded, size: 16),
-                                    label: const Text('Save Settings', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-                                    style: FilledButton.styleFrom(
-                                      backgroundColor: const Color(0xFF10B981),
-                                      foregroundColor: Colors.white,
-                                      visualDensity: VisualDensity.compact,
-                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                    ),
-                                  ),
-                                ],
+                                        ),
+                                      FilledButton.tonalIcon(
+                                        onPressed: () async {
+                                          _applyBarcodePreset('zebra_zd230_3col_22mm');
+                                          _saveBarcodeSettings();
+                                          final printer = _localLabelPrinterName;
+                                          if (printer != null && printer.trim().isNotEmpty) {
+                                            const calCmd = '! U1 setvar "media.sense_mode" "gap"\r\n'
+                                                '! U1 setvar "zpl.label_length_always" "yes"\r\n'
+                                                '! U1 setvar "zpl.label_length" "192"\r\n'
+                                                '^XA\r\n'
+                                                '^PW813\r\n'
+                                                '^LL192,Y\r\n'
+                                                '^MNY\r\n'
+                                                '^JUS\r\n'
+                                                '^XZ\r\n'
+                                                '~JC\r\n';
+                                            await _printBarcodeEntriesViaZpl(printer, calCmd);
+                                          }
+                                          if (mounted) {
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              const SnackBar(
+                                                content: Text('Auto-Calibrated for Zebra ZD230 3-Col (31.8x22mm)! Hardware sensor calibrated to 22mm gaps.'),
+                                                backgroundColor: Color(0xFF10B981),
+                                              ),
+                                            );
+                                          }
+                                        },
+                                        icon: const Icon(Icons.tune_rounded, size: 16),
+                                        label: const Text('Auto-Calibrate 3-Col (31.8x22mm)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                        style: FilledButton.styleFrom(
+                                          backgroundColor: const Color(0xFFF59E0B).withValues(alpha: 0.15),
+                                          foregroundColor: const Color(0xFFD97706),
+                                          visualDensity: VisualDensity.compact,
+                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                        ),
+                                      ),
+                                      FilledButton.icon(
+                                        onPressed: _testPrintSampleBarcodeLabel,
+                                        icon: const Icon(Icons.bolt_rounded, size: 16),
+                                        label: const Text('Test 1 Label', style: TextStyle(fontSize: 12)),
+                                        style: FilledButton.styleFrom(
+                                          backgroundColor: const Color(0xFF6366F1),
+                                          foregroundColor: Colors.white,
+                                          visualDensity: VisualDensity.compact,
+                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                        ),
+                                      ),
+                                      FilledButton.icon(
+                                        onPressed: () async {
+                                          await _saveBarcodeSettings();
+                                          if (mounted) {
+                                            ScaffoldMessenger.of(context).showSnackBar(
+                                              const SnackBar(
+                                                content: Text('Label printer & layout settings saved successfully!'),
+                                                backgroundColor: Color(0xFF10B981),
+                                              ),
+                                            );
+                                          }
+                                        },
+                                        icon: const Icon(Icons.check_circle_outline_rounded, size: 16),
+                                        label: const Text('Save Settings', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                                        style: FilledButton.styleFrom(
+                                          backgroundColor: const Color(0xFF10B981),
+                                          foregroundColor: Colors.white,
+                                          visualDensity: VisualDensity.compact,
+                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                        ),
+                                      ),
+                                    ],
+                                  );
+
+                                  if (isBannerCompact) {
+                                    return Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        statusContent,
+                                        const SizedBox(height: 10),
+                                        actionButtons,
+                                      ],
+                                    );
+                                  }
+
+                                  return Row(
+                                    children: [
+                                      Expanded(child: statusContent),
+                                      const SizedBox(width: 10),
+                                      actionButtons,
+                                    ],
+                                  );
+                                },
                               ),
                             ),
 
@@ -344,35 +373,42 @@ extension _barcode_printing_pageExt on _DashboardScreenState {
                                     borderRadius: BorderRadius.circular(10),
                                     border: Border.all(color: Colors.amber.shade700, width: 1.2),
                                   ),
-                                  child: Row(
-                                    children: [
-                                      Icon(Icons.warning_amber_rounded, color: Colors.amber.shade800, size: 26),
-                                      const SizedBox(width: 12),
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              'Roll Width Warning: $_barcodeColumns columns span ${totalColSpanMm.toStringAsFixed(1)} mm, but Roll W is ${_barcodePaperWidthMm.toStringAsFixed(1)} mm!',
-                                              style: TextStyle(
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 13,
-                                                color: Colors.amber.shade900,
-                                              ),
+                                  child: LayoutBuilder(
+                                    builder: (context, warnConstraints) {
+                                      final isWarnCompact = warnConstraints.maxWidth < 650;
+
+                                      final warnContent = Row(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Icon(Icons.warning_amber_rounded, color: Colors.amber.shade800, size: 26),
+                                          const SizedBox(width: 12),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  'Roll Width Warning: $_barcodeColumns columns span ${totalColSpanMm.toStringAsFixed(1)} mm, but Roll W is ${_barcodePaperWidthMm.toStringAsFixed(1)} mm!',
+                                                  style: TextStyle(
+                                                    fontWeight: FontWeight.bold,
+                                                    fontSize: 13,
+                                                    color: Colors.amber.shade900,
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 2),
+                                                Text(
+                                                  'This causes the rightmost barcode to be cut off. Standard 3-column Zebra rolls are 101.6 mm (4 inches) wide.',
+                                                  style: TextStyle(
+                                                    fontSize: 11.5,
+                                                    color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
+                                                  ),
+                                                ),
+                                              ],
                                             ),
-                                            const SizedBox(height: 2),
-                                            Text(
-                                              'This causes the rightmost barcode to be cut off. Standard 3-column Zebra rolls are 101.6 mm (4 inches) wide.',
-                                              style: TextStyle(
-                                                fontSize: 11.5,
-                                                color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                      const SizedBox(width: 10),
-                                      FilledButton.tonalIcon(
+                                          ),
+                                        ],
+                                      );
+
+                                      final autoFixBtn = FilledButton.tonalIcon(
                                         onPressed: () {
                                           setState(() {
                                             _barcodePaperWidthMm = 101.6;
@@ -390,8 +426,27 @@ extension _barcode_printing_pageExt on _DashboardScreenState {
                                         },
                                         icon: const Icon(Icons.auto_fix_high_rounded, size: 16),
                                         label: const Text('Auto-Fix Alignment & Width', style: TextStyle(fontSize: 12)),
-                                      ),
-                                    ],
+                                      );
+
+                                      if (isWarnCompact) {
+                                        return Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            warnContent,
+                                            const SizedBox(height: 8),
+                                            autoFixBtn,
+                                          ],
+                                        );
+                                      }
+
+                                      return Row(
+                                        children: [
+                                          Expanded(child: warnContent),
+                                          const SizedBox(width: 10),
+                                          autoFixBtn,
+                                        ],
+                                      );
+                                    },
                                   ),
                                 );
                               },
@@ -657,15 +712,19 @@ extension _barcode_printing_pageExt on _DashboardScreenState {
                               children: [
                                 Row(
                                   children: [
-                                    Text(
-                                      'Dimensions & Alignment (Type exact values or adjust with +/-)',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w700,
-                                        color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
+                                    Expanded(
+                                      child: Text(
+                                        'Dimensions & Alignment (Type exact values or adjust with +/-)',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w700,
+                                          color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
+                                        ),
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
                                       ),
                                     ),
-                                    const Spacer(),
+                                    const SizedBox(width: 8),
                                     TextButton.icon(
                                       onPressed: () {
                                         _applyBarcodePreset(_barcodePreset);

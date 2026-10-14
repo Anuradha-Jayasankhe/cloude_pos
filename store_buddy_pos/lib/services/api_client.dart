@@ -155,16 +155,22 @@ class ApiClient {
   }
 
   Future<void> autoDetectEnvironment() async {
-    // If an explicit API_URL was supplied at build time, do not auto-switch
-    if (const bool.hasEnvironment('API_URL')) return;
-
-    if (kReleaseMode) {
-      // In production release builds, always use Cloud Server
+    // Mobile devices (Android/iOS) ALWAYS connect directly to the deployed cloud server
+    if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
       updateBaseUrl(cloudBaseUrl);
       return;
     }
 
-    // In local development/debug mode, auto-detect if local server is running
+    // If an explicit API_URL was supplied at build time, do not auto-switch
+    if (const bool.hasEnvironment('API_URL')) return;
+
+    if (kReleaseMode) {
+      // In production release builds, default to Cloud Server
+      updateBaseUrl(cloudBaseUrl);
+      return;
+    }
+
+    // In desktop local development/debug mode, auto-detect if local server is running
     final localAlive = await checkHealth(localBaseUrl);
     if (localAlive) {
       updateBaseUrl(localBaseUrl);

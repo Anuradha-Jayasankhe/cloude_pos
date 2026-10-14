@@ -5,7 +5,6 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../blocs/auth/auth_bloc.dart';
-import '../services/api_client.dart';
 import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/ui_system.dart';
@@ -347,8 +346,6 @@ class _LoginScreenState extends State<LoginScreen>
     _submitSignIn();
   }
 
-
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -462,49 +459,18 @@ class _LoginScreenState extends State<LoginScreen>
         return AnimatedBuilder(
           animation: _orbController,
           builder: (context, child) {
-            final t = _orbController.value;
             return Container(
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(28),
-                gradient: UiGradients.heroPanel,
+                color: const Color(0xFF0D1525),
                 border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.06),
+                  color: const Color(0xFF1E2D45),
                   width: 1,
                 ),
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(28),
-                child: Stack(
-                  children: [
-                    // Animated orb 1
-                    Positioned(
-                      left: -60 + (t * 30),
-                      top: -60 + (t * 20),
-                      child: _glowOrb(220, const Color(0xFF6366F1), 0.18),
-                    ),
-                    // Animated orb 2
-                    Positioned(
-                      right: -50 - (t * 20),
-                      bottom: -50 + (t * 30),
-                      child: _glowOrb(180, const Color(0xFF8B5CF6), 0.14),
-                    ),
-                    // Animated orb 3 — amber accent
-                    Positioned(
-                      left: constraints.maxWidth * 0.6 + (t * 15),
-                      top: constraints.maxHeight * 0.3 - (t * 20),
-                      child: _glowOrb(100, AppTheme.brandAmber, 0.10),
-                    ),
-                    // Grid pattern overlay
-                    Positioned.fill(
-                      child: Opacity(
-                        opacity: 0.03,
-                        child: CustomPaint(painter: _GridPainter()),
-                      ),
-                    ),
-                    // Content
-                    child!,
-                  ],
-                ),
+                child: child!,
               ),
             );
           },
@@ -589,22 +555,6 @@ class _LoginScreenState extends State<LoginScreen>
           ),
         );
       },
-    );
-  }
-
-  Widget _glowOrb(double size, Color color, double opacity) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: RadialGradient(
-          colors: [
-            color.withValues(alpha: opacity),
-            color.withValues(alpha: 0),
-          ],
-        ),
-      ),
     );
   }
 
@@ -706,21 +656,15 @@ class _LoginScreenState extends State<LoginScreen>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        ShaderMask(
-                          blendMode: BlendMode.srcIn,
-                          shaderCallback: (bounds) =>
-                              UiGradients.brand.createShader(
-                            Rect.fromLTWH(0, 0, bounds.width, bounds.height),
-                          ),
-                          child: Text(
-                            _LoginText.rightTitle,
-                            style: (mobile
-                                    ? textTheme.headlineSmall
-                                    : textTheme.headlineMedium)
-                                ?.copyWith(
-                              fontWeight: FontWeight.w800,
-                              letterSpacing: -0.4,
-                            ),
+                        Text(
+                          _LoginText.rightTitle,
+                          style: (mobile
+                                  ? textTheme.headlineSmall
+                                  : textTheme.headlineMedium)
+                              ?.copyWith(
+                            color: const Color(0xFF818CF8),
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.4,
                           ),
                         ),
                         const SizedBox(height: 6),
@@ -812,9 +756,8 @@ class _LoginScreenState extends State<LoginScreen>
           curve: UiAnimations.easeOut,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            gradient: selected ? UiGradients.brand : null,
+            color: selected ? const Color(0xFF4F46E5) : Colors.transparent,
             borderRadius: BorderRadius.circular(UiRadius.sm),
-            boxShadow: selected ? UiShadows.glow : null,
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -1103,7 +1046,7 @@ class _LoginScreenState extends State<LoginScreen>
                 padding: const EdgeInsets.symmetric(vertical: 9),
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  gradient: !_isOfflineTrialSelected ? UiGradients.brand : null,
+                  color: !_isOfflineTrialSelected ? const Color(0xFF4F46E5) : Colors.transparent,
                   borderRadius: BorderRadius.circular(UiRadius.sm),
                 ),
                 child: Row(
@@ -1142,7 +1085,7 @@ class _LoginScreenState extends State<LoginScreen>
                 padding: const EdgeInsets.symmetric(vertical: 9),
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  gradient: _isOfflineTrialSelected ? UiGradients.brand : null,
+                  color: _isOfflineTrialSelected ? const Color(0xFF4F46E5) : Colors.transparent,
                   borderRadius: BorderRadius.circular(UiRadius.sm),
                 ),
                 child: Row(
@@ -1248,10 +1191,8 @@ class _LoginScreenState extends State<LoginScreen>
       child: AnimatedContainer(
         duration: UiAnimations.fast,
         decoration: BoxDecoration(
-          gradient: busy ? null : UiGradients.brand,
-          color: busy ? const Color(0xFF1E2D45) : null,
+          color: busy ? const Color(0xFF1E2D45) : const Color(0xFF4F46E5),
           borderRadius: BorderRadius.circular(UiRadius.md),
-          boxShadow: busy ? null : UiShadows.glow,
         ),
         child: Material(
           color: Colors.transparent,
@@ -1283,24 +1224,4 @@ class _LoginScreenState extends State<LoginScreen>
       ),
     );
   }
-}
-
-// ─────────────────────── Painters ─────────────────────────────────────────
-class _GridPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.white
-      ..strokeWidth = 0.5;
-    const step = 40.0;
-    for (double x = 0; x < size.width; x += step) {
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
-    }
-    for (double y = 0; y < size.height; y += step) {
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
