@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 
 class UiSpacing {
   static const double xxs = 4;
@@ -373,10 +373,11 @@ class StatusChip extends StatelessWidget {
   }
 }
 
-/// Gradient icon container
+/// Icon box container with reliable solid brand color fallback
 class GradientIconBox extends StatelessWidget {
   final IconData icon;
-  final Gradient gradient;
+  final Gradient? gradient;
+  final Color? color;
   final double size;
   final double iconSize;
   final double borderRadius;
@@ -384,7 +385,8 @@ class GradientIconBox extends StatelessWidget {
   const GradientIconBox({
     super.key,
     required this.icon,
-    this.gradient = UiGradients.brand,
+    this.gradient,
+    this.color,
     this.size = 44,
     this.iconSize = 22,
     this.borderRadius = UiRadius.md,
@@ -396,7 +398,7 @@ class GradientIconBox extends StatelessWidget {
       width: size,
       height: size,
       decoration: BoxDecoration(
-        gradient: gradient,
+        color: color ?? const Color(0xFF4F46E5),
         borderRadius: BorderRadius.circular(borderRadius),
         boxShadow: [
           BoxShadow(

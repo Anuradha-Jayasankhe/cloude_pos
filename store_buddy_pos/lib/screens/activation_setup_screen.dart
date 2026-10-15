@@ -92,7 +92,7 @@ class _ActivationSetupScreenState extends State<ActivationSetupScreen>
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(28),
-        gradient: AppTheme.brandGradient,
+        color: const Color(0xFFEEF2FF),
       ),
       padding: const EdgeInsets.all(36),
       child: Column(

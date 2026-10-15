@@ -10763,11 +10763,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             width: double.infinity,
             padding: const EdgeInsets.fromLTRB(16, 18, 16, 16),
             decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [Color(0xFF17162B), Color(0xFF24183E)],
-              ),
+              color: Color(0xFF1B1735),
             ),
             child: Row(
               children: [
@@ -14732,11 +14728,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         width: 64,
                         height: 64,
                         decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [Color(0xFF7C3AED), Color(0xFF4F46E5)],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          ),
+                          color: const Color(0xFF6D28D9),
                           borderRadius: BorderRadius.circular(12),
                           boxShadow: [
                             BoxShadow(
@@ -15381,7 +15373,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         width: 32,
                         height: 32,
                         decoration: BoxDecoration(
-                          gradient: UiGradients.brand,
+                          color: const Color(0xFF4F46E5),
                           borderRadius: BorderRadius.circular(9),
                         ),
                         alignment: Alignment.center,
@@ -15452,11 +15444,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             width: double.infinity,
             padding: const EdgeInsets.fromLTRB(16, 18, 16, 16),
             decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [Color(0xFF0B1220), Color(0xFF172036)],
-              ),
+              color: const Color(0xFF0F182A),
               border: Border(
                 bottom: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
               ),
@@ -16961,10 +16949,10 @@ class _MetricCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Gradient top accent line
+              // Top accent line
               Container(
                 height: 3,
-                decoration: BoxDecoration(gradient: gradient),
+                decoration: const BoxDecoration(color: Color(0xFF4F46E5)),
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(18, 16, 18, 18),
@@ -16986,12 +16974,12 @@ class _MetricCard extends StatelessWidget {
                             ),
                           ),
                         ),
-                        // Gradient icon container
+                        // Brand icon container
                         Container(
                           width: 40,
                           height: 40,
                           decoration: BoxDecoration(
-                            gradient: gradient,
+                            color: const Color(0xFF4F46E5),
                             borderRadius: BorderRadius.circular(UiRadius.md),
                             boxShadow: [
                               BoxShadow(

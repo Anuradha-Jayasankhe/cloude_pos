@@ -489,7 +489,7 @@ class _LoginScreenState extends State<LoginScreen>
                       fit: BoxFit.contain,
                       errorBuilder: (_, __, ___) => Container(
                         decoration: BoxDecoration(
-                          gradient: UiGradients.brand,
+                          color: const Color(0xFF4F46E5),
                           borderRadius: BorderRadius.circular(20),
                           boxShadow: UiShadows.glow,
                         ),
@@ -567,7 +567,7 @@ class _LoginScreenState extends State<LoginScreen>
           height: 30,
           alignment: Alignment.center,
           decoration: BoxDecoration(
-            gradient: UiGradients.brand,
+            color: const Color(0xFF4F46E5),
             borderRadius: BorderRadius.circular(8),
             boxShadow: [
               BoxShadow(

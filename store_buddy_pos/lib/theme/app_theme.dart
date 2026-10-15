@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 
 import 'ui_system.dart';
 
@@ -559,8 +559,7 @@ class AppTheme {
     double borderRadius = UiRadius.md,
   }) {
     return BoxDecoration(
-      gradient: disabled ? null : UiGradients.brand,
-      color: disabled ? const Color(0xFF334155) : null,
+      color: disabled ? const Color(0xFF334155) : const Color(0xFF4F46E5),
       borderRadius: BorderRadius.circular(borderRadius),
       boxShadow: disabled ? null : UiShadows.glow,
     );

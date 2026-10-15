@@ -397,7 +397,7 @@ extension _point_of_saleExt on _DashboardScreenState {
                     Container(
                       padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(
-                        gradient: UiGradients.brand,
+                        color: const Color(0xFF4F46E5),
                         borderRadius: BorderRadius.circular(14),
                       ),
                       child: Row(
@@ -1616,11 +1616,7 @@ extension _point_of_saleExt on _DashboardScreenState {
                     vertical: 10,
                   ),
                   decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [Colors.purple.shade600, Colors.purple.shade800],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
+                    color: Colors.purple.shade700,
                     borderRadius: BorderRadius.circular(16),
                     boxShadow: [
                       BoxShadow(
@@ -4624,7 +4620,7 @@ extension _point_of_saleExt on _DashboardScreenState {
                                 width: double.infinity,
                                 height: 50,
                                 decoration: BoxDecoration(
-                                  gradient: UiGradients.brand,
+                                  color: const Color(0xFF4F46E5),
                                   borderRadius: BorderRadius.circular(14),
                                   boxShadow: [
                                     BoxShadow(

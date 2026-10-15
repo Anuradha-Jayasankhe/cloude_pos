@@ -2021,6 +2021,9 @@ extension _sales_pageExt on _DashboardScreenState {
   }) {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardAccentColor = accent is LinearGradient && (accent as LinearGradient).colors.isNotEmpty
+        ? (accent as LinearGradient).colors.first
+        : const Color(0xFF4F46E5);
     return SizedBox(
       width: 178,
       height: 118,
@@ -2047,7 +2050,7 @@ extension _sales_pageExt on _DashboardScreenState {
                     height: 72,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      gradient: accent,
+                      color: cardAccentColor.withValues(alpha: 0.15),
                     ),
                   ),
                 ),
@@ -2063,7 +2066,7 @@ extension _sales_pageExt on _DashboardScreenState {
                           width: 26,
                           height: 26,
                           decoration: BoxDecoration(
-                            gradient: accent,
+                            color: cardAccentColor,
                             borderRadius: BorderRadius.circular(UiRadius.xs),
                           ),
                           child: Icon(icon, size: 14, color: Colors.white),

@@ -255,7 +255,7 @@ class _BankRegistersPageState extends State<BankRegistersPage>
           width: double.infinity,
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            gradient: UiGradients.brand,
+            color: const Color(0xFF4F46E5),
             borderRadius: BorderRadius.circular(16),
             boxShadow: UiShadows.glow,
           ),

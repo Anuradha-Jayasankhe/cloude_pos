@@ -1,4 +1,4 @@
-﻿part of '../dashboard_screen.dart';
+part of '../dashboard_screen.dart';
 
 extension _suppliers_pageExt on _DashboardScreenState {
   Widget _supplierAvatar(_SupplierItem supplier) {
@@ -532,14 +532,7 @@ extension _suppliers_pageExt on _DashboardScreenState {
                   Container(
                     padding: const EdgeInsets.fromLTRB(20, 18, 12, 14),
                     decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          AppTheme.brandIndigo.withValues(alpha: 0.12),
-                          AppTheme.brandIndigo.withValues(alpha: 0.02),
-                        ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
+                      color: AppTheme.brandIndigo.withValues(alpha: 0.08),
                       borderRadius: const BorderRadius.vertical(
                         top: Radius.circular(20),
                       ),

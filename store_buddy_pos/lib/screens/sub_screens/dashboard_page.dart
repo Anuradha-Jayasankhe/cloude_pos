@@ -226,7 +226,7 @@ extension _dashboard_pageExt on _DashboardScreenState {
                   vertical: 4,
                 ),
                 decoration: BoxDecoration(
-                  gradient: UiGradients.brand,
+                  color: const Color(0xFF4F46E5),
                   borderRadius: BorderRadius.circular(UiRadius.pill),
                   boxShadow: UiShadows.glow,
                 ),
@@ -1031,7 +1031,7 @@ extension _dashboard_pageExt on _DashboardScreenState {
                         Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
-                            gradient: UiGradients.brand,
+                            color: const Color(0xFF4F46E5),
                             borderRadius: BorderRadius.circular(10),
                           ),
                           child: const Icon(
@@ -1586,7 +1586,7 @@ extension _dashboard_pageExt on _DashboardScreenState {
                     width: 44,
                     height: 44,
                     decoration: BoxDecoration(
-                      gradient: gradient,
+                      color: gradient.colors.first,
                       borderRadius: BorderRadius.circular(12),
                       boxShadow: [
                         BoxShadow(
@@ -1687,12 +1687,7 @@ extension _dashboard_pageExt on _DashboardScreenState {
               width: double.infinity,
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
               decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    AppTheme.brandIndigo.withValues(alpha: 0.10),
-                    AppTheme.brandViolet.withValues(alpha: 0.06),
-                  ],
-                ),
+                color: AppTheme.brandIndigo.withValues(alpha: 0.08),
                 border: Border(
                   bottom: BorderSide(
                     color: isDark
@@ -4725,7 +4720,7 @@ extension _dashboard_pageExt on _DashboardScreenState {
                           Container(
                             padding: const EdgeInsets.all(16),
                             decoration: BoxDecoration(
-                              gradient: UiGradients.brand,
+                              color: const Color(0xFF4F46E5),
                               borderRadius: BorderRadius.circular(12),
                               boxShadow: UiShadows.glow,
                             ),
